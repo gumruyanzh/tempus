@@ -91,8 +91,9 @@ async def generate_tweet(
         )
 
         # Log audit
+        from app.models.audit import AuditAction
         await audit_service.log(
-            action=audit_service.log.__self__.__class__.__bases__[0],
+            action=AuditAction.TWEET_GENERATED,
             user_id=user.id,
             resource_type="generation",
             details={"type": "single_tweet", "tone": tone},

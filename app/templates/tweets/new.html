@@ -29,10 +29,10 @@
                 <div class="mt-1">
                     <textarea id="content" name="content" rows="4" required maxlength="280"
                         class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                        placeholder="What's on your mind?">{% if draft %}{{ draft.content }}{% endif %}</textarea>
+                        placeholder="What's on your mind?">{{ initial_content }}</textarea>
                 </div>
                 <p class="mt-1 text-sm text-gray-500">
-                    <span id="char-count">{% if draft %}{{ draft.content|length }}{% else %}0{% endif %}</span>/280 characters
+                    <span id="char-count">{{ initial_content|length }}</span>/280 characters
                 </p>
             </div>
 

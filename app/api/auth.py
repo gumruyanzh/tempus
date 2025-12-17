@@ -366,7 +366,7 @@ async def twitter_callback(
                 value=tokens["access_token"],
                 httponly=True,
                 secure=settings.is_production,
-                samesite="strict",
+                samesite="lax",
                 max_age=settings.jwt_access_token_expire_minutes * 60,
             )
             redirect.set_cookie(
@@ -374,7 +374,7 @@ async def twitter_callback(
                 value=tokens["refresh_token"],
                 httponly=True,
                 secure=settings.is_production,
-                samesite="strict",
+                samesite="lax",
                 max_age=settings.jwt_refresh_token_expire_days * 24 * 60 * 60,
             )
             redirect.delete_cookie("twitter_oauth_state")

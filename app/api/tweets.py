@@ -26,6 +26,7 @@ async def new_tweet_page(
     request: Request,
     user: CurrentUser,
     draft_id: Optional[str] = None,
+    content: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Render new tweet page."""
@@ -36,6 +37,9 @@ async def new_tweet_page(
         tweet_service = TweetService(db)
         draft = await tweet_service.get_draft(UUID(draft_id), user.id)
 
+    # Use content from query param or draft
+    initial_content = content or (draft.content if draft else "")
+
     csrf_token = generate_csrf_token()
 
     response = templates.TemplateResponse(
@@ -44,6 +48,7 @@ async def new_tweet_page(
             "request": request,
             "user": user,
             "draft": draft,
+            "initial_content": initial_content,
             "csrf_token": csrf_token,
             "error": request.query_params.get("error"),
             "success": request.query_params.get("success"),

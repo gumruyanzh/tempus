@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule Tweet{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+    <h1 class="text-2xl font-semibold text-gray-900">Schedule Tweet</h1>
+
+    {% if error %}
+    <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+        {{ success }}
+    </div>
+    {% endif %}
+
+    <div class="mt-6 bg-white shadow rounded-lg p-6">
+        <form action="/tweets/schedule" method="POST" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div>
+                <label for="content" class="block text-sm font-medium text-gray-700">
+                    Tweet Content
+                </label>
+                <div class="mt-1">
+                    <textarea id="content" name="content" rows="4" required maxlength="280"
+                        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                        placeholder="What's on your mind?">{% if draft %}{{ draft.content }}{% endif %}</textarea>
+                </div>
+                <p class="mt-1 text-sm text-gray-500">
+                    <span id="char-count">{% if draft %}{{ draft.content|length }}{% else %}0{% endif %}</span>/280 characters
+                </p>
+            </div>
+
+            <div class="flex items-center">
+                <input id="is_thread" name="is_thread" type="checkbox" {% if draft and draft.is_thread %}checked{% endif %}
+                    class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                <label for="is_thread" class="ml-2 block text-sm text-gray-900">
+                    This is a thread
+                </label>
+            </div>
+
+            <div id="thread-section" class="{% if not draft or not draft.is_thread %}hidden{% endif %}">
+                <label for="thread_content" class="block text-sm font-medium text-gray-700">
+                    Thread Tweets (separate with ---)
+                </label>
+                <div class="mt-1">
+                    <textarea id="thread_content" name="thread_content" rows="6"
+                        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                        placeholder="First tweet...&#10;---&#10;Second tweet...&#10;---&#10;Third tweet...">{% if draft and draft.thread_contents %}{{ draft.thread_contents|join('\n---\n') }}{% endif %}</textarea>
+                </div>
+                <p class="mt-1 text-sm text-gray-500">
+                    Each tweet in the thread should be separated by --- on its own line
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                    <label for="scheduled_date" class="block text-sm font-medium text-gray-700">
+                        Date
+                    </label>
+                    <div class="mt-1">
+                        <input type="date" id="scheduled_date" name="scheduled_date" required
+                            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                    </div>
+                </div>
+
+                <div>
+                    <label for="scheduled_time" class="block text-sm font-medium text-gray-700">
+                        Time
+                    </label>
+                    <div class="mt-1">
+                        <input type="time" id="scheduled_time" name="scheduled_time" required
+                            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label for="user_timezone" class="block text-sm font-medium text-gray-700">
+                    Timezone
+                </label>
+                <div class="mt-1">
+                    <select id="user_timezone" name="user_timezone"
+                        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                        <option value="UTC" {% if user.timezone == 'UTC' %}selected{% endif %}>UTC</option>
+                        <option value="America/New_York" {% if user.timezone == 'America/New_York' %}selected{% endif %}>Eastern Time</option>
+                        <option value="America/Chicago" {% if user.timezone == 'America/Chicago' %}selected{% endif %}>Central Time</option>
+                        <option value="America/Denver" {% if user.timezone == 'America/Denver' %}selected{% endif %}>Mountain Time</option>
+                        <option value="America/Los_Angeles" {% if user.timezone == 'America/Los_Angeles' %}selected{% endif %}>Pacific Time</option>
+                        <option value="Europe/London" {% if user.timezone == 'Europe/London' %}selected{% endif %}>London</option>
+                        <option value="Europe/Paris" {% if user.timezone == 'Europe/Paris' %}selected{% endif %}>Paris</option>
+                        <option value="Asia/Tokyo" {% if user.timezone == 'Asia/Tokyo' %}selected{% endif %}>Tokyo</option>
+                        <option value="Asia/Shanghai" {% if user.timezone == 'Asia/Shanghai' %}selected{% endif %}>Shanghai</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex justify-between">
+                <a href="/generate" class="text-indigo-600 hover:text-indigo-500 text-sm">
+                    Generate with AI instead
+                </a>
+                <button type="submit"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Schedule Tweet
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Character counter
+    const contentEl = document.getElementById('content');
+    const charCountEl = document.getElementById('char-count');
+
+    contentEl.addEventListener('input', function() {
+        charCountEl.textContent = this.value.length;
+        if (this.value.length > 280) {
+            charCountEl.classList.add('text-red-600');
+        } else {
+            charCountEl.classList.remove('text-red-600');
+        }
+    });
+
+    // Thread toggle
+    const isThreadEl = document.getElementById('is_thread');
+    const threadSectionEl = document.getElementById('thread-section');
+
+    isThreadEl.addEventListener('change', function() {
+        if (this.checked) {
+            threadSectionEl.classList.remove('hidden');
+        } else {
+            threadSectionEl.classList.add('hidden');
+        }
+    });
+
+    // Set minimum date to today
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('scheduled_date').setAttribute('min', today);
+</script>
+{% endblock %}

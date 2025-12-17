@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Tweet History{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">Tweet History</h1>
+        <a href="/tweets/new" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+            Schedule Tweet
+        </a>
+    </div>
+
+    <div class="mt-6 bg-white shadow rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Content
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Scheduled
+                    </th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Actions
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% if tweets %}
+                {% for tweet in tweets %}
+                <tr>
+                    <td class="px-6 py-4">
+                        <div class="text-sm text-gray-900 max-w-md truncate">{{ tweet.content[:80] }}{% if tweet.content|length > 80 %}...{% endif %}</div>
+                        {% if tweet.is_thread %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Thread</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if tweet.status.value == 'posted' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Posted</span>
+                        {% elif tweet.status.value == 'pending' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Pending</span>
+                        {% elif tweet.status.value == 'failed' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>
+                        {% elif tweet.status.value == 'cancelled' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Cancelled</span>
+                        {% elif tweet.status.value == 'retrying' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">Retrying</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{{ tweet.status.value }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {{ tweet.scheduled_for.strftime('%Y-%m-%d %H:%M') }} UTC
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <a href="/tweets/{{ tweet.id }}" class="text-indigo-600 hover:text-indigo-900">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="4" class="px-6 py-12 text-center text-gray-500">
+                        No tweets found. <a href="/tweets/new" class="text-indigo-600 hover:text-indigo-500">Schedule your first tweet</a>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if tweets %}
+    <div class="mt-4 flex justify-between items-center">
+        <div>
+            {% if page > 1 %}
+            <a href="/dashboard/history?page={{ page - 1 }}" class="text-indigo-600 hover:text-indigo-500">Previous</a>
+            {% endif %}
+        </div>
+        <div class="text-sm text-gray-500">Page {{ page }}</div>
+        <div>
+            {% if has_more %}
+            <a href="/dashboard/history?page={{ page + 1 }}" class="text-indigo-600 hover:text-indigo-500">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

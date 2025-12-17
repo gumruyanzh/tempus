@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Tweet{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+    <h1 class="text-2xl font-semibold text-gray-900">Edit Tweet</h1>
+
+    {% if error %}
+    <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    <div class="mt-6 bg-white shadow rounded-lg p-6">
+        <form action="/tweets/{{ tweet.id }}/edit" method="POST" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div>
+                <label for="content" class="block text-sm font-medium text-gray-700">
+                    Tweet Content
+                </label>
+                <div class="mt-1">
+                    <textarea id="content" name="content" rows="4" required maxlength="280"
+                        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md">{{ tweet.content }}</textarea>
+                </div>
+                <p class="mt-1 text-sm text-gray-500">
+                    <span id="char-count">{{ tweet.content|length }}</span>/280 characters
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                    <label for="scheduled_date" class="block text-sm font-medium text-gray-700">
+                        Date
+                    </label>
+                    <div class="mt-1">
+                        <input type="date" id="scheduled_date" name="scheduled_date" required
+                            value="{{ tweet.scheduled_for.strftime('%Y-%m-%d') }}"
+                            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                    </div>
+                </div>
+
+                <div>
+                    <label for="scheduled_time" class="block text-sm font-medium text-gray-700">
+                        Time
+                    </label>
+                    <div class="mt-1">
+                        <input type="time" id="scheduled_time" name="scheduled_time" required
+                            value="{{ tweet.scheduled_for.strftime('%H:%M') }}"
+                            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label for="user_timezone" class="block text-sm font-medium text-gray-700">
+                    Timezone
+                </label>
+                <div class="mt-1">
+                    <select id="user_timezone" name="user_timezone"
+                        class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                        <option value="UTC" {% if tweet.timezone == 'UTC' %}selected{% endif %}>UTC</option>
+                        <option value="America/New_York" {% if tweet.timezone == 'America/New_York' %}selected{% endif %}>Eastern Time</option>
+                        <option value="America/Chicago" {% if tweet.timezone == 'America/Chicago' %}selected{% endif %}>Central Time</option>
+                        <option value="America/Denver" {% if tweet.timezone == 'America/Denver' %}selected{% endif %}>Mountain Time</option>
+                        <option value="America/Los_Angeles" {% if tweet.timezone == 'America/Los_Angeles' %}selected{% endif %}>Pacific Time</option>
+                        <option value="Europe/London" {% if tweet.timezone == 'Europe/London' %}selected{% endif %}>London</option>
+                        <option value="Europe/Paris" {% if tweet.timezone == 'Europe/Paris' %}selected{% endif %}>Paris</option>
+                        <option value="Asia/Tokyo" {% if tweet.timezone == 'Asia/Tokyo' %}selected{% endif %}>Tokyo</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex justify-between">
+                <a href="/tweets/{{ tweet.id }}" class="text-gray-600 hover:text-gray-500 text-sm">
+                    Cancel
+                </a>
+                <button type="submit"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const contentEl = document.getElementById('content');
+    const charCountEl = document.getElementById('char-count');
+
+    contentEl.addEventListener('input', function() {
+        charCountEl.textContent = this.value.length;
+        if (this.value.length > 280) {
+            charCountEl.classList.add('text-red-600');
+        } else {
+            charCountEl.classList.remove('text-red-600');
+        }
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('scheduled_date').setAttribute('min', today);
+</script>
+{% endblock %}

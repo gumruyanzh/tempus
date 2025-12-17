@@ -1,0 +1,47 @@
+"""Celery application configuration."""
+
+from celery import Celery
+from celery.schedules import crontab
+
+from app.core.config import settings
+
+celery_app = Celery(
+    "tempus",
+    broker=settings.celery_broker_url,
+    backend=settings.celery_result_backend,
+)
+
+# Celery configuration
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    enable_utc=True,
+    task_track_started=True,
+    task_time_limit=300,  # 5 minutes
+    task_soft_time_limit=240,  # 4 minutes
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    # Rate limiting
+    task_default_rate_limit="10/m",
+    # Retry settings
+    task_default_retry_delay=60,
+    task_max_retries=3,
+)
+
+# Beat schedule for periodic tasks
+celery_app.conf.beat_schedule = {
+    "process-pending-tweets": {
+        "task": "app.tasks.tweet_tasks.process_pending_tweets",
+        "schedule": crontab(minute="*"),  # Every minute
+    },
+    "cleanup-old-logs": {
+        "task": "app.tasks.maintenance_tasks.cleanup_old_execution_logs",
+        "schedule": crontab(hour=3, minute=0),  # Daily at 3 AM UTC
+    },
+}
+
+# Autodiscover tasks
+celery_app.autodiscover_tasks(["app.tasks"])

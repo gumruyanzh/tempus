@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
+        <a href="/tweets/new" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+            Schedule Tweet
+        </a>
+    </div>
+
+    <!-- Stats -->
+    <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Pending</dt>
+                            <dd class="text-lg font-semibold text-gray-900">{{ stats.pending }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Posted</dt>
+                            <dd class="text-lg font-semibold text-gray-900">{{ stats.posted }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Failed</dt>
+                            <dd class="text-lg font-semibold text-gray-900">{{ stats.failed }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Drafts</dt>
+                            <dd class="text-lg font-semibold text-gray-900">{{ stats.drafts }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Twitter Connection Status -->
+    <div class="mt-6">
+        <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-lg font-medium text-gray-900 mb-4">Twitter Connection</h2>
+            {% if twitter_account and twitter_account.is_active %}
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    {% if twitter_account.provider_profile_image %}
+                    <img src="{{ twitter_account.provider_profile_image }}" alt="Profile" class="h-10 w-10 rounded-full">
+                    {% endif %}
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-gray-900">@{{ twitter_account.provider_username }}</p>
+                        <p class="text-sm text-gray-500">{{ twitter_account.provider_display_name }}</p>
+                    </div>
+                </div>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Connected
+                </span>
+            </div>
+            {% else %}
+            <div class="text-center py-4">
+                <p class="text-gray-500 mb-4">Connect your Twitter account to start scheduling tweets</p>
+                <a href="/auth/twitter/connect" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600">
+                    Connect Twitter
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <!-- Upcoming Tweets -->
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Upcoming Tweets</h2>
+            </div>
+            <ul class="divide-y divide-gray-200">
+                {% if upcoming_tweets %}
+                {% for tweet in upcoming_tweets %}
+                <li class="px-4 py-4">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm text-gray-900 truncate">{{ tweet.content[:100] }}{% if tweet.content|length > 100 %}...{% endif %}</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                Scheduled for: {{ tweet.scheduled_for.strftime('%Y-%m-%d %H:%M') }} UTC
+                            </p>
+                        </div>
+                        <a href="/tweets/{{ tweet.id }}" class="ml-4 text-indigo-600 hover:text-indigo-500 text-sm">View</a>
+                    </div>
+                </li>
+                {% endfor %}
+                {% else %}
+                <li class="px-4 py-8 text-center text-gray-500">
+                    No upcoming tweets scheduled
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <!-- Recent Posted -->
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Recently Posted</h2>
+            </div>
+            <ul class="divide-y divide-gray-200">
+                {% if posted_tweets %}
+                {% for tweet in posted_tweets %}
+                <li class="px-4 py-4">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm text-gray-900 truncate">{{ tweet.content[:100] }}{% if tweet.content|length > 100 %}...{% endif %}</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                Posted: {{ tweet.posted_at.strftime('%Y-%m-%d %H:%M') }} UTC
+                            </p>
+                        </div>
+                        {% if tweet.twitter_tweet_id %}
+                        <a href="https://twitter.com/i/status/{{ tweet.twitter_tweet_id }}" target="_blank" class="ml-4 text-blue-500 hover:text-blue-600 text-sm">View on X</a>
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+                {% else %}
+                <li class="px-4 py-8 text-center text-gray-500">
+                    No tweets posted yet
+                </li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Failed Tweets -->
+    {% if failed_tweets %}
+    <div class="mt-6 bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-red-600">Failed Tweets</h2>
+        </div>
+        <ul class="divide-y divide-gray-200">
+            {% for tweet in failed_tweets %}
+            <li class="px-4 py-4">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-900 truncate">{{ tweet.content[:100] }}{% if tweet.content|length > 100 %}...{% endif %}</p>
+                        <p class="text-xs text-red-500 mt-1">
+                            Error: {{ tweet.last_error[:50] if tweet.last_error else 'Unknown error' }}...
+                        </p>
+                    </div>
+                    <a href="/tweets/{{ tweet.id }}" class="ml-4 text-indigo-600 hover:text-indigo-500 text-sm">View</a>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

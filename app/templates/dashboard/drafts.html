@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Drafts{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">Drafts</h1>
+        <a href="/generate" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+            Generate New
+        </a>
+    </div>
+
+    <div class="mt-6 grid gap-4">
+        {% if drafts %}
+        {% for draft in drafts %}
+        <div class="bg-white shadow rounded-lg p-4">
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <p class="text-gray-900">{{ draft.content }}</p>
+                    {% if draft.is_thread %}
+                    <span class="mt-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Thread</span>
+                    {% endif %}
+                    {% if draft.generated_by_ai %}
+                    <span class="mt-2 ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">AI Generated</span>
+                    {% endif %}
+                </div>
+                <div class="ml-4 flex space-x-2">
+                    <a href="/tweets/new?draft_id={{ draft.id }}" class="text-indigo-600 hover:text-indigo-500 text-sm">Schedule</a>
+                </div>
+            </div>
+            <div class="mt-2 flex items-center text-xs text-gray-500">
+                <span>{{ draft.character_count }} characters</span>
+                <span class="mx-2">|</span>
+                <span>Created {{ draft.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                {% if draft.tone_used %}
+                <span class="mx-2">|</span>
+                <span>Tone: {{ draft.tone_used.value }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="bg-white shadow rounded-lg p-8 text-center text-gray-500">
+            <p>No drafts saved yet.</p>
+            <p class="mt-2">
+                <a href="/generate" class="text-indigo-600 hover:text-indigo-500">Generate your first tweet</a>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

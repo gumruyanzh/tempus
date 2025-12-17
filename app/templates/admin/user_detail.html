@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}User Details{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">User Details</h1>
+        <a href="/admin/users" class="text-indigo-600 hover:text-indigo-500">Back to Users</a>
+    </div>
+
+    {% if error %}
+    <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+    <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">{{ success }}</div>
+    {% endif %}
+
+    <div class="mt-6 bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-4 py-5 sm:px-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-medium text-gray-900">{{ target_user.email }}</h2>
+                    {% if target_user.full_name %}
+                    <p class="text-sm text-gray-500">{{ target_user.full_name }}</p>
+                    {% endif %}
+                </div>
+                <div class="flex space-x-2">
+                    {% if target_user.role.value == 'admin' %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Admin</span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">User</span>
+                    {% endif %}
+                    {% if target_user.is_active %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Inactive</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="border-t border-gray-200 px-4 py-5 sm:px-6">
+            <dl class="grid grid-cols-2 gap-4">
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">User ID</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ target_user.id }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Timezone</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ target_user.timezone }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Joined</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ target_user.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Last Login</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ target_user.last_login_at.strftime('%Y-%m-%d %H:%M') if target_user.last_login_at else 'Never' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Total Tweets</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ tweet_count }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Verified</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ 'Yes' if target_user.is_verified else 'No' }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        <div class="border-t border-gray-200 px-4 py-4 sm:px-6 bg-gray-50">
+            <div class="flex space-x-3">
+                <form action="/admin/users/{{ target_user.id }}/toggle-active" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit"
+                        class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        {% if target_user.is_active %}Deactivate{% else %}Activate{% endif %}
+                    </button>
+                </form>
+                <form action="/admin/users/{{ target_user.id }}/toggle-role" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit"
+                        class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                        {% if target_user.role.value == 'admin' %}Remove Admin{% else %}Make Admin{% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Audit Logs -->
+    <div class="mt-6 bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Activity Log</h2>
+        </div>
+        <ul class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+            {% for log in audit_logs %}
+            <li class="px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">{{ log.action.value }}</span>
+                        {% if log.resource_type %}
+                        <span class="text-sm text-gray-500">({{ log.resource_type }})</span>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs text-gray-500">{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                </div>
+                {% if log.ip_address %}
+                <p class="text-xs text-gray-400 mt-1">IP: {{ log.ip_address }}</p>
+                {% endif %}
+            </li>
+            {% else %}
+            <li class="px-4 py-8 text-center text-gray-500">No activity recorded</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

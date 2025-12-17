@@ -83,15 +83,19 @@ async def get_optional_user(
     if not access_token:
         return None
 
-    payload = decode_token(access_token)
-    if payload is None or payload.get("type") != "access":
-        return None
-
-    user_id = payload.get("sub")
-    if not user_id:
-        return None
-
     try:
+        # Ensure access_token is a string
+        if not isinstance(access_token, str):
+            return None
+
+        payload = decode_token(access_token)
+        if payload is None or payload.get("type") != "access":
+            return None
+
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+
         stmt = select(User).where(
             User.id == UUID(user_id),
             User.deleted_at.is_(None),
@@ -99,7 +103,8 @@ async def get_optional_user(
         )
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
-    except ValueError:
+    except Exception:
+        # Any error in token decoding means user is not authenticated
         return None
 
 

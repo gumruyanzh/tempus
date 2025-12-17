@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.security import decrypt_value, encrypt_value, generate_state_token
 from app.models.oauth import OAuthAccount, OAuthProvider
+from app.models.user import User
 
 logger = get_logger(__name__)
 
@@ -415,3 +416,110 @@ class TwitterService:
             return True
         except TwitterAPIError:
             return False
+
+    async def find_user_by_twitter_id(self, twitter_id: str) -> Optional[User]:
+        """Find a user by their Twitter provider ID."""
+        stmt = select(OAuthAccount).where(
+            OAuthAccount.provider == OAuthProvider.TWITTER,
+            OAuthAccount.provider_user_id == twitter_id,
+            OAuthAccount.is_active == True,
+        )
+        result = await self.db.execute(stmt)
+        oauth_account = result.scalar_one_or_none()
+
+        if oauth_account:
+            # Load the user
+            stmt = select(User).where(
+                User.id == oauth_account.user_id,
+                User.deleted_at.is_(None),
+                User.is_active == True,
+            )
+            result = await self.db.execute(stmt)
+            return result.scalar_one_or_none()
+
+        return None
+
+    async def create_user_from_twitter(
+        self,
+        token_data: dict[str, Any],
+        user_data: dict[str, Any],
+    ) -> tuple[User, OAuthAccount]:
+        """Create a new user from Twitter OAuth data."""
+        twitter_user = user_data.get("data", {})
+
+        # Create new user
+        user = User(
+            email=None,  # Twitter-only users don't have email initially
+            hashed_password=None,
+            full_name=twitter_user.get("name"),
+            is_active=True,
+            is_verified=True,  # Twitter users are verified via OAuth
+        )
+        self.db.add(user)
+        await self.db.flush()
+        await self.db.refresh(user)
+
+        # Create OAuth account
+        oauth_account = OAuthAccount(
+            user_id=user.id,
+            provider=OAuthProvider.TWITTER,
+            provider_user_id=twitter_user.get("id"),
+            provider_username=twitter_user.get("username"),
+            provider_display_name=twitter_user.get("name"),
+            provider_profile_image=twitter_user.get("profile_image_url"),
+            encrypted_access_token=encrypt_value(token_data["access_token"]),
+            encrypted_refresh_token=(
+                encrypt_value(token_data["refresh_token"])
+                if "refresh_token" in token_data
+                else None
+            ),
+            token_expires_at=datetime.now(timezone.utc)
+            + timedelta(seconds=token_data.get("expires_in", 7200)),
+            token_scope=token_data.get("scope"),
+            is_active=True,
+        )
+        self.db.add(oauth_account)
+        await self.db.flush()
+        await self.db.refresh(oauth_account)
+
+        logger.info(
+            "User created from Twitter",
+            user_id=str(user.id),
+            twitter_username=twitter_user.get("username"),
+        )
+
+        return user, oauth_account
+
+    async def sign_in_or_sign_up_with_twitter(
+        self,
+        token_data: dict[str, Any],
+        user_data: dict[str, Any],
+    ) -> tuple[User, bool]:
+        """Sign in existing user or create new user from Twitter.
+
+        Returns tuple of (user, is_new_user).
+        """
+        twitter_user = user_data.get("data", {})
+        twitter_id = twitter_user.get("id")
+
+        # Check if user already exists with this Twitter account
+        existing_user = await self.find_user_by_twitter_id(twitter_id)
+
+        if existing_user:
+            # Update OAuth tokens for existing user
+            await self.save_oauth_account(
+                user_id=existing_user.id,
+                token_data=token_data,
+                user_data=user_data,
+            )
+            existing_user.update_last_login()
+            return existing_user, False
+
+        # Create new user
+        user, oauth_account = await self.create_user_from_twitter(
+            token_data=token_data,
+            user_data=user_data,
+        )
+        user.update_last_login()
+
+        return user, True

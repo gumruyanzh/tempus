@@ -78,7 +78,7 @@ async def login(
             await db.commit()
 
         return RedirectResponse(
-            url="/auth/login?error=Invalid+email+or+password",
+            url="/login?error=Invalid+email+or+password",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -155,7 +155,7 @@ async def register(
     # Validate passwords match
     if password != confirm_password:
         return RedirectResponse(
-            url="/auth/register?error=Passwords+do+not+match",
+            url="/register?error=Passwords+do+not+match",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -204,7 +204,7 @@ async def register(
 
     except AuthError as e:
         return RedirectResponse(
-            url=f"/auth/register?error={str(e).replace(' ', '+')}",
+            url=f"/register?error={str(e).replace(' ', '+')}",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -225,7 +225,7 @@ async def logout(
     )
     await db.commit()
 
-    response = RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
+    response = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")
 
@@ -233,7 +233,34 @@ async def logout(
     return response
 
 
-# Twitter OAuth Routes
+# Twitter OAuth Routes - Sign In / Sign Up
+
+
+@router.get("/twitter/signin")
+async def twitter_signin(
+    request: Request,
+    user: OptionalUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Initiate Twitter OAuth flow for sign in/sign up."""
+    if user:
+        return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+
+    twitter_service = TwitterService(db)
+    auth_url, state_verifier = twitter_service.get_authorization_url()
+
+    # Store state and verifier in cookie with auth mode
+    response = RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+    response.set_cookie(
+        key="twitter_oauth_state",
+        value=f"signin:{state_verifier}",  # Prefix with mode
+        httponly=True,
+        secure=settings.is_production,
+        samesite="lax",
+        max_age=600,  # 10 minutes
+    )
+
+    return response
 
 
 @router.get("/twitter/connect")
@@ -242,15 +269,15 @@ async def twitter_connect(
     user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Initiate Twitter OAuth flow."""
+    """Initiate Twitter OAuth flow for connecting account."""
     twitter_service = TwitterService(db)
     auth_url, state_verifier = twitter_service.get_authorization_url()
 
-    # Store state and verifier in cookie
+    # Store state and verifier in cookie with connect mode
     response = RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     response.set_cookie(
         key="twitter_oauth_state",
-        value=state_verifier,
+        value=f"connect:{state_verifier}",  # Prefix with mode
         httponly=True,
         secure=settings.is_production,
         samesite="lax",
@@ -265,32 +292,31 @@ async def twitter_callback(
     request: Request,
     code: str,
     state: str,
-    user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """Handle Twitter OAuth callback."""
+    """Handle Twitter OAuth callback for both sign-in and connect flows."""
     # Get stored state and verifier
-    stored_state_verifier = request.cookies.get("twitter_oauth_state")
+    stored_cookie = request.cookies.get("twitter_oauth_state")
 
-    if not stored_state_verifier:
+    if not stored_cookie:
         return RedirectResponse(
-            url="/settings?error=OAuth+state+expired",
+            url="/login?error=OAuth+state+expired",
             status_code=status.HTTP_302_FOUND,
         )
 
-    # Parse stored value
+    # Parse stored value (mode:state:verifier)
     try:
-        stored_state, code_verifier = stored_state_verifier.split(":", 1)
+        mode, stored_state, code_verifier = stored_cookie.split(":", 2)
     except ValueError:
         return RedirectResponse(
-            url="/settings?error=Invalid+OAuth+state",
+            url="/login?error=Invalid+OAuth+state",
             status_code=status.HTTP_302_FOUND,
         )
 
     # Verify state
     if state != stored_state:
         return RedirectResponse(
-            url="/settings?error=OAuth+state+mismatch",
+            url="/login?error=OAuth+state+mismatch",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -301,45 +327,109 @@ async def twitter_callback(
         # Exchange code for tokens
         token_data = await twitter_service.exchange_code_for_tokens(code, code_verifier)
 
-        # Get user info
+        # Get Twitter user info
         user_data = await twitter_service.get_current_user(token_data["access_token"])
 
-        # Save OAuth account
-        oauth_account = await twitter_service.save_oauth_account(
-            user_id=user.id,
-            token_data=token_data,
-            user_data=user_data,
-        )
+        if mode == "signin":
+            # Sign in or sign up flow
+            user, is_new = await twitter_service.sign_in_or_sign_up_with_twitter(
+                token_data=token_data,
+                user_data=user_data,
+            )
 
-        # Log audit
-        await audit_service.log_twitter_connected(
-            user_id=user.id,
-            twitter_username=oauth_account.provider_username or "unknown",
-            ip_address=get_client_ip(request),
-        )
-        await db.commit()
+            # Log audit
+            if is_new:
+                await audit_service.log_registration(
+                    user_id=user.id,
+                    email=f"@{user_data.get('data', {}).get('username', 'unknown')}",
+                    ip_address=get_client_ip(request),
+                    user_agent=get_user_agent(request),
+                )
+            else:
+                await audit_service.log_login(
+                    user_id=user.id,
+                    ip_address=get_client_ip(request),
+                    user_agent=get_user_agent(request),
+                    success=True,
+                )
+            await db.commit()
 
-        logger.info(
-            "Twitter account connected",
-            user_id=str(user.id),
-            twitter_username=oauth_account.provider_username,
-        )
+            # Create JWT tokens
+            from app.services.auth import AuthService
+            auth_service = AuthService(db)
+            tokens = auth_service.create_tokens(user)
 
-        response = RedirectResponse(
-            url="/settings?success=Twitter+account+connected",
-            status_code=status.HTTP_302_FOUND,
-        )
-        response.delete_cookie("twitter_oauth_state")
-        return response
+            # Set cookies and redirect
+            redirect = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+            redirect.set_cookie(
+                key="access_token",
+                value=tokens["access_token"],
+                httponly=True,
+                secure=settings.is_production,
+                samesite="strict",
+                max_age=settings.jwt_access_token_expire_minutes * 60,
+            )
+            redirect.set_cookie(
+                key="refresh_token",
+                value=tokens["refresh_token"],
+                httponly=True,
+                secure=settings.is_production,
+                samesite="strict",
+                max_age=settings.jwt_refresh_token_expire_days * 24 * 60 * 60,
+            )
+            redirect.delete_cookie("twitter_oauth_state")
+
+            logger.info(
+                "User signed in via Twitter",
+                user_id=str(user.id),
+                is_new=is_new,
+            )
+            return redirect
+
+        else:
+            # Connect flow - requires existing authenticated user
+            from app.auth.dependencies import get_current_user
+            try:
+                user = await get_current_user(request, db)
+            except HTTPException:
+                return RedirectResponse(
+                    url="/login?error=Please+sign+in+first",
+                    status_code=status.HTTP_302_FOUND,
+                )
+
+            # Save OAuth account
+            oauth_account = await twitter_service.save_oauth_account(
+                user_id=user.id,
+                token_data=token_data,
+                user_data=user_data,
+            )
+
+            # Log audit
+            await audit_service.log_twitter_connected(
+                user_id=user.id,
+                twitter_username=oauth_account.provider_username or "unknown",
+                ip_address=get_client_ip(request),
+            )
+            await db.commit()
+
+            logger.info(
+                "Twitter account connected",
+                user_id=str(user.id),
+                twitter_username=oauth_account.provider_username,
+            )
+
+            response = RedirectResponse(
+                url="/settings?success=Twitter+account+connected",
+                status_code=status.HTTP_302_FOUND,
+            )
+            response.delete_cookie("twitter_oauth_state")
+            return response
 
     except Exception as e:
-        logger.error(
-            "Twitter OAuth callback failed",
-            user_id=str(user.id),
-            error=str(e),
-        )
+        logger.error("Twitter OAuth callback failed", error=str(e))
+        error_url = "/login" if mode == "signin" else "/settings"
         return RedirectResponse(
-            url=f"/settings?error=Twitter+connection+failed:+{str(e)[:50]}",
+            url=f"{error_url}?error=Twitter+authentication+failed",
             status_code=status.HTTP_302_FOUND,
         )
     finally:

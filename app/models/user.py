@@ -31,15 +31,15 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "users"
 
     # Authentication fields
-    email: Mapped[str] = mapped_column(
+    email: Mapped[Optional[str]] = mapped_column(
         String(255),
         unique=True,
-        nullable=False,
+        nullable=True,  # Nullable for Twitter-only users
         index=True,
     )
-    hashed_password: Mapped[str] = mapped_column(
+    hashed_password: Mapped[Optional[str]] = mapped_column(
         String(255),
-        nullable=False,
+        nullable=True,  # Nullable for Twitter-only users
     )
 
     # Profile fields

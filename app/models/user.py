@@ -13,6 +13,7 @@ from app.models.base import GUID, SoftDeleteMixin, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.models.audit import AuditLog
+    from app.models.campaign import AutoCampaign
     from app.models.oauth import OAuthAccount
     from app.models.tweet import ScheduledTweet, TweetDraft
 
@@ -112,6 +113,11 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         back_populates="user",
         lazy="noload",
     )
+    campaigns: Mapped[List["AutoCampaign"]] = relationship(
+        "AutoCampaign",
+        back_populates="user",
+        lazy="selectin",
+    )
 
     def update_last_login(self) -> None:
         """Update the last login timestamp."""
@@ -127,6 +133,7 @@ class APIKeyType(str, enum.Enum):
     """Types of API keys."""
 
     DEEPSEEK = "deepseek"
+    TAVILY = "tavily"  # Web search API for campaign research
 
 
 class EncryptedAPIKey(Base, UUIDMixin, TimestampMixin):

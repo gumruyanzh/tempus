@@ -21,6 +21,7 @@ from app.core.database import Base
 from app.models.base import GUID, SoftDeleteMixin, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from app.models.campaign import AutoCampaign
     from app.models.user import User
 
 
@@ -38,6 +39,7 @@ class TweetStatus(str, enum.Enum):
 
     DRAFT = "draft"
     PENDING = "pending"
+    AWAITING_GENERATION = "awaiting_generation"  # Campaign tweets waiting for content
     POSTING = "posting"
     POSTED = "posted"
     FAILED = "failed"
@@ -127,6 +129,24 @@ class ScheduledTweet(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         nullable=True,
         index=True,
     )
+    campaign_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(),
+        ForeignKey("auto_campaigns.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    # Campaign tweet flags
+    is_campaign_tweet: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    content_generated: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
 
     # Content (snapshot from draft or direct input)
     content: Mapped[str] = mapped_column(
@@ -205,6 +225,10 @@ class ScheduledTweet(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     )
     draft: Mapped[Optional["TweetDraft"]] = relationship(
         "TweetDraft",
+        back_populates="scheduled_tweets",
+    )
+    campaign: Mapped[Optional["AutoCampaign"]] = relationship(
+        "AutoCampaign",
         back_populates="scheduled_tweets",
     )
     execution_logs: Mapped[List["TweetExecutionLog"]] = relationship(

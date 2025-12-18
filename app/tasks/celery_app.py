@@ -37,6 +37,14 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.tweet_tasks.process_pending_tweets",
         "schedule": crontab(minute="*"),  # Every minute
     },
+    "process-campaign-tweets": {
+        "task": "app.tasks.campaign_tasks.process_campaign_tweets",
+        "schedule": crontab(minute="*"),  # Every minute
+    },
+    "check-completed-campaigns": {
+        "task": "app.tasks.campaign_tasks.check_completed_campaigns",
+        "schedule": crontab(minute="*/5"),  # Every 5 minutes
+    },
     "cleanup-old-logs": {
         "task": "app.tasks.maintenance_tasks.cleanup_old_execution_logs",
         "schedule": crontab(hour=3, minute=0),  # Daily at 3 AM UTC

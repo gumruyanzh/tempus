@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Campaign Preview{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+        <a href="/campaigns/new" class="text-indigo-600 hover:text-indigo-500 text-sm">&larr; Back to Edit</a>
+    </div>
+
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h1 class="text-2xl font-semibold text-gray-900 mb-2">Review Your Campaign</h1>
+            <p class="text-gray-600 mb-6">
+                Here's what we understood from your prompt. Review and adjust if needed before creating.
+            </p>
+
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                <h3 class="text-sm font-medium text-gray-500 mb-2">Original Prompt</h3>
+                <p class="text-gray-900">{{ prompt }}</p>
+            </div>
+
+            <form action="/campaigns/create" method="post" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="prompt" value="{{ prompt }}">
+
+                <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                        <label for="topic" class="block text-sm font-medium text-gray-700">Topic</label>
+                        <textarea
+                            id="topic"
+                            name="topic"
+                            rows="2"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            required
+                        >{{ config.topic }}</textarea>
+                    </div>
+
+                    <div>
+                        <label for="frequency_per_day" class="block text-sm font-medium text-gray-700">Tweets per Day</label>
+                        <select
+                            id="frequency_per_day"
+                            name="frequency_per_day"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if config.frequency_per_day == i %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="duration_days" class="block text-sm font-medium text-gray-700">Duration (Days)</label>
+                        <select
+                            id="duration_days"
+                            name="duration_days"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            <option value="7" {% if config.duration_days == 7 %}selected{% endif %}>7 (1 week)</option>
+                            <option value="14" {% if config.duration_days == 14 %}selected{% endif %}>14 (2 weeks)</option>
+                            <option value="30" {% if config.duration_days == 30 %}selected{% endif %}>30 (1 month)</option>
+                            <option value="60" {% if config.duration_days == 60 %}selected{% endif %}>60 (2 months)</option>
+                            <option value="90" {% if config.duration_days == 90 %}selected{% endif %}>90 (3 months)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="tone" class="block text-sm font-medium text-gray-700">Tone</label>
+                        <select
+                            id="tone"
+                            name="tone"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            <option value="professional" {% if config.tone == 'professional' %}selected{% endif %}>Professional</option>
+                            <option value="casual" {% if config.tone == 'casual' %}selected{% endif %}>Casual</option>
+                            <option value="viral" {% if config.tone == 'viral' %}selected{% endif %}>Viral</option>
+                            <option value="thought_leadership" {% if config.tone == 'thought_leadership' %}selected{% endif %}>Thought Leadership</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="posting_start_hour" class="block text-sm font-medium text-gray-700">Posting Start Hour</label>
+                        <select
+                            id="posting_start_hour"
+                            name="posting_start_hour"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            {% for i in range(0, 24) %}
+                            <option value="{{ i }}" {% if i == 9 %}selected{% endif %}>{{ '%02d:00'|format(i) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="posting_end_hour" class="block text-sm font-medium text-gray-700">Posting End Hour</label>
+                        <select
+                            id="posting_end_hour"
+                            name="posting_end_hour"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            {% for i in range(0, 24) %}
+                            <option value="{{ i }}" {% if i == 21 %}selected{% endif %}>{{ '%02d:00'|format(i) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <label for="search_keywords" class="block text-sm font-medium text-gray-700">Search Keywords (optional)</label>
+                        <input
+                            type="text"
+                            id="search_keywords"
+                            name="search_keywords"
+                            value="{{ config.search_keywords|join(', ') if config.search_keywords else '' }}"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            placeholder="AI, machine learning, automation (comma-separated)"
+                        >
+                        <p class="mt-1 text-sm text-gray-500">Additional keywords for web research before generating each tweet</p>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <label for="custom_instructions" class="block text-sm font-medium text-gray-700">Custom Instructions (optional)</label>
+                        <textarea
+                            id="custom_instructions"
+                            name="custom_instructions"
+                            rows="2"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                            placeholder="Any special instructions for content style..."
+                        >{{ config.custom_instructions if config.custom_instructions else '' }}</textarea>
+                    </div>
+                </div>
+
+                <!-- Summary -->
+                <div class="bg-indigo-50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-indigo-900 mb-2">Campaign Summary</h3>
+                    <p class="text-indigo-700">
+                        <span id="summary-total">{{ config.total_tweets }}</span> tweets will be scheduled over
+                        <span id="summary-days">{{ config.duration_days }}</span> days
+                        (<span id="summary-freq">{{ config.frequency_per_day }}</span> per day).
+                    </p>
+                    <p class="text-indigo-600 text-sm mt-1">
+                        Tweets will be posted between <span id="summary-start">09:00</span> and <span id="summary-end">21:00</span> in your timezone ({{ user.timezone }}).
+                    </p>
+                </div>
+
+                <div class="flex justify-end space-x-4">
+                    <a href="/campaigns/new" class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        Back
+                    </a>
+                    <button type="submit" class="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                        Create Campaign
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Update summary when values change
+document.getElementById('frequency_per_day').addEventListener('change', updateSummary);
+document.getElementById('duration_days').addEventListener('change', updateSummary);
+document.getElementById('posting_start_hour').addEventListener('change', updateSummary);
+document.getElementById('posting_end_hour').addEventListener('change', updateSummary);
+
+function updateSummary() {
+    const freq = parseInt(document.getElementById('frequency_per_day').value);
+    const days = parseInt(document.getElementById('duration_days').value);
+    const startHour = parseInt(document.getElementById('posting_start_hour').value);
+    const endHour = parseInt(document.getElementById('posting_end_hour').value);
+
+    document.getElementById('summary-total').innerText = freq * days;
+    document.getElementById('summary-days').innerText = days;
+    document.getElementById('summary-freq').innerText = freq;
+    document.getElementById('summary-start').innerText = String(startHour).padStart(2, '0') + ':00';
+    document.getElementById('summary-end').innerText = String(endHour).padStart(2, '0') + ':00';
+}
+</script>
+{% endblock %}

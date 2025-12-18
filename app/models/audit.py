@@ -43,6 +43,13 @@ class AuditAction(str, enum.Enum):
     TWEET_EDITED = "tweet_edited"
     TWEET_DELETED = "tweet_deleted"
 
+    # Campaigns
+    CAMPAIGN_CREATED = "campaign_created"
+    CAMPAIGN_PAUSED = "campaign_paused"
+    CAMPAIGN_RESUMED = "campaign_resumed"
+    CAMPAIGN_CANCELLED = "campaign_cancelled"
+    CAMPAIGN_COMPLETED = "campaign_completed"
+
     # Settings
     SETTINGS_UPDATED = "settings_updated"
     TIMEZONE_CHANGED = "timezone_changed"

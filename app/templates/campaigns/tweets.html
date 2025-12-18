@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}{{ campaign.name }} - Tweets{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+        <a href="/campaigns/{{ campaign.id }}" class="text-indigo-600 hover:text-indigo-500 text-sm">&larr; Back to Campaign</a>
+    </div>
+
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-900">{{ campaign.name }}</h1>
+            <p class="text-gray-600">All scheduled and posted tweets</p>
+        </div>
+        <div class="flex space-x-2">
+            <a href="/campaigns/{{ campaign.id }}/tweets" class="px-3 py-2 rounded-md text-sm font-medium {% if not status_filter %}bg-indigo-100 text-indigo-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
+                All
+            </a>
+            <a href="/campaigns/{{ campaign.id }}/tweets?status_filter=awaiting_generation" class="px-3 py-2 rounded-md text-sm font-medium {% if status_filter == 'awaiting_generation' %}bg-blue-100 text-blue-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
+                Scheduled
+            </a>
+            <a href="/campaigns/{{ campaign.id }}/tweets?status_filter=posted" class="px-3 py-2 rounded-md text-sm font-medium {% if status_filter == 'posted' %}bg-green-100 text-green-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
+                Posted
+            </a>
+            <a href="/campaigns/{{ campaign.id }}/tweets?status_filter=failed" class="px-3 py-2 rounded-md text-sm font-medium {% if status_filter == 'failed' %}bg-red-100 text-red-700{% else %}text-gray-500 hover:bg-gray-100{% endif %}">
+                Failed
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <ul class="divide-y divide-gray-200">
+            {% if tweets %}
+            {% for tweet in tweets %}
+            <li class="px-4 py-4 hover:bg-gray-50">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                        {% if tweet.content %}
+                        <p class="text-sm text-gray-900">{{ tweet.content }}</p>
+                        {% else %}
+                        <p class="text-sm text-gray-400 italic">Content will be generated at posting time</p>
+                        {% endif %}
+                        <div class="mt-2 flex items-center space-x-3 text-xs">
+                            <span class="px-2 py-0.5 rounded-full
+                                {% if tweet.status.value == 'posted' %}bg-green-100 text-green-800
+                                {% elif tweet.status.value == 'awaiting_generation' %}bg-blue-100 text-blue-800
+                                {% elif tweet.status.value == 'failed' %}bg-red-100 text-red-800
+                                {% elif tweet.status.value == 'cancelled' %}bg-gray-100 text-gray-800
+                                {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                {{ tweet.status.value.replace('_', ' ')|title }}
+                            </span>
+                            <span class="text-gray-500">
+                                {% if tweet.status.value == 'posted' and tweet.posted_at %}
+                                Posted: {{ tweet.posted_at.strftime('%Y-%m-%d %H:%M') }} UTC
+                                {% else %}
+                                Scheduled: {{ tweet.scheduled_for.strftime('%Y-%m-%d %H:%M') }} UTC
+                                {% endif %}
+                            </span>
+                            {% if tweet.content_generated %}
+                            <span class="text-gray-400">AI Generated</span>
+                            {% endif %}
+                        </div>
+                        {% if tweet.last_error %}
+                        <p class="mt-2 text-xs text-red-500">Error: {{ tweet.last_error[:100] }}{% if tweet.last_error|length > 100 %}...{% endif %}</p>
+                        {% endif %}
+                    </div>
+                    <div class="ml-4 flex space-x-2">
+                        {% if tweet.twitter_tweet_id %}
+                        <a href="https://twitter.com/i/status/{{ tweet.twitter_tweet_id }}" target="_blank" class="text-blue-500 hover:text-blue-600 text-sm">
+                            View on X
+                        </a>
+                        {% endif %}
+                        <a href="/tweets/{{ tweet.id }}" class="text-indigo-600 hover:text-indigo-500 text-sm">
+                            Details
+                        </a>
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+            {% else %}
+            <li class="px-4 py-8 text-center text-gray-500">
+                No tweets found{% if status_filter %} with status "{{ status_filter.replace('_', ' ') }}"{% endif %}
+            </li>
+            {% endif %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

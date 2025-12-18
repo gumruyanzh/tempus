@@ -23,6 +23,10 @@ rsync -avz --delete \
     --exclude '*.egg-info' \
     ./ ${SERVER}:${REMOTE_PATH}/
 
+# Fix permissions for Docker
+echo "Fixing permissions..."
+ssh ${SERVER} "cd ${REMOTE_PATH} && chown -R root:root app && chmod -R 755 app"
+
 # Restart services
 echo "Restarting services..."
 ssh ${SERVER} "cd ${REMOTE_PATH} && docker compose restart web celery_worker celery_beat"

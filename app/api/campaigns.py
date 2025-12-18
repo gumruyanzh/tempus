@@ -163,6 +163,7 @@ async def create_campaign(
     tone: Annotated[str, Form()],
     posting_start_hour: Annotated[int, Form()] = 9,
     posting_end_hour: Annotated[int, Form()] = 21,
+    timezone: Annotated[str, Form()] = "UTC",
     search_keywords: Annotated[Optional[str], Form()] = None,
     custom_instructions: Annotated[Optional[str], Form()] = None,
     db: AsyncSession = Depends(get_db),
@@ -209,7 +210,7 @@ async def create_campaign(
         campaign = await campaign_service.create_campaign(
             user_id=user.id,
             config=config,
-            user_timezone=user.timezone,
+            user_timezone=timezone,
             posting_start_hour=posting_start_hour,
             posting_end_hour=posting_end_hour,
         )

@@ -11,14 +11,14 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.models.base import SoftDeleteMixin, TimestampMixin, UUIDMixin
+from app.models.base import GUID, SoftDeleteMixin, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -51,7 +51,7 @@ class TweetDraft(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "tweet_drafts"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -68,7 +68,7 @@ class TweetDraft(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         nullable=False,
     )
     thread_contents: Mapped[Optional[List[str]]] = mapped_column(
-        ARRAY(Text),
+        JSON,
         nullable=True,
     )
 
@@ -116,13 +116,13 @@ class ScheduledTweet(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "scheduled_tweets"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
     draft_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("tweet_drafts.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -139,7 +139,7 @@ class ScheduledTweet(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         nullable=False,
     )
     thread_contents: Mapped[Optional[List[str]]] = mapped_column(
-        ARRAY(Text),
+        JSON,
         nullable=True,
     )
 
@@ -184,7 +184,7 @@ class ScheduledTweet(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         index=True,
     )
     twitter_thread_ids: Mapped[Optional[List[str]]] = mapped_column(
-        ARRAY(String(255)),
+        JSON,
         nullable=True,
     )
 
@@ -263,7 +263,7 @@ class TweetExecutionLog(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "tweet_execution_logs"
 
     scheduled_tweet_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        GUID(),
         ForeignKey("scheduled_tweets.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

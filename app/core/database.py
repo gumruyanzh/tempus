@@ -14,14 +14,21 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import settings
 
-# Create async engine
-engine = create_async_engine(
-    settings.database_url,
-    pool_size=settings.database_pool_size,
-    max_overflow=settings.database_max_overflow,
-    pool_pre_ping=True,
-    echo=settings.debug,
-)
+# Create async engine with appropriate settings based on database type
+_engine_kwargs = {
+    "echo": settings.debug,
+}
+
+# Pool settings only apply to connection-pooling databases (PostgreSQL, MySQL)
+# SQLite uses StaticPool or NullPool and doesn't support these settings
+if not settings.database_url.startswith("sqlite"):
+    _engine_kwargs.update({
+        "pool_size": settings.database_pool_size,
+        "max_overflow": settings.database_max_overflow,
+        "pool_pre_ping": True,
+    })
+
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 
 # Create async session factory
 async_session_factory = async_sessionmaker(

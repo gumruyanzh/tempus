@@ -185,20 +185,51 @@ async def _generate_and_post_campaign_tweet_async(task, tweet_id: str) -> dict:
                             await web_search_service.close()
                             web_search_service = None
 
-            # Step 2: Generate tweet content
+            # Step 2: Fetch previously posted tweets to avoid repetition
+            campaign_service = CampaignService(db)
+            previous_tweets = await campaign_service.get_campaign_tweets(
+                campaign_id=campaign.id,
+                status=TweetStatus.POSTED,
+                limit=10,
+            )
+
+            # Build list of previous tweet content for context
+            previous_content = ""
+            if previous_tweets:
+                previous_content = "\n".join([
+                    f"- {t.content[:100]}..." if len(t.content) > 100 else f"- {t.content}"
+                    for t in previous_tweets
+                ])
+
+            # Step 3: Generate tweet content with uniqueness constraints
             generation_prompt = f"""Topic: {campaign.topic}
 
 """
             if search_context:
-                generation_prompt += f"""Recent context and news to incorporate (use this to make the tweet timely and relevant):
+                generation_prompt += f"""Recent news and context to incorporate (use this to make the tweet timely and relevant):
 {search_context}
+
+"""
+            if previous_content:
+                generation_prompt += f"""IMPORTANT - Previously posted tweets (DO NOT repeat these ideas or structures):
+{previous_content}
 
 """
             if campaign.custom_instructions:
                 generation_prompt += f"""Special instructions: {campaign.custom_instructions}
 
 """
-            generation_prompt += """Create an engaging, authentic tweet about this topic. Make it conversational and valuable to the reader."""
+            generation_prompt += """Create a UNIQUE, engaging tweet about this topic.
+
+CRITICAL REQUIREMENTS:
+1. DO NOT start the tweet the same way as any previous tweets
+2. Use a completely different angle, hook, or perspective
+3. Vary sentence structure and length
+4. Be conversational, authentic, and human-like
+5. Provide genuine value or insight to the reader
+6. Avoid generic openings like "The [topic] is..." - be creative!
+
+Write like a real person sharing a genuine thought, not a content machine."""
 
             try:
                 generated_content = await deepseek_service.generate_tweet(

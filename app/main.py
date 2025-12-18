@@ -14,6 +14,7 @@ from app.auth.dependencies import get_optional_user
 from app.core.config import settings
 from app.core.database import close_db, get_db, init_db
 from app.core.logging import get_logger, setup_logging
+from app.middleware import TokenRefreshMiddleware
 
 # Setup logging
 setup_logging()
@@ -49,6 +50,9 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
     lifespan=lifespan,
 )
+
+# Add middleware for automatic token refresh
+app.add_middleware(TokenRefreshMiddleware)
 
 # Mount static files
 app.mount(

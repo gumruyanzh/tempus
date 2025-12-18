@@ -47,7 +47,8 @@ class TwitterService:
     TWITTER_AUTH_URL = "https://twitter.com/i/oauth2/authorize"
     TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
     TWITTER_API_BASE = "https://api.twitter.com/2"
-    TWITTER_SCOPES = ["tweet.read", "tweet.write", "users.read"]
+    # offline.access is required to get refresh tokens for long-lived sessions
+    TWITTER_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"]
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db

@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.exceptions import HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -101,6 +102,25 @@ async def server_error_handler(request: Request, exc):
         "errors/500.html",
         {"request": request},
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions - redirect 401 to login for HTML pages."""
+    if exc.status_code == 401:
+        # Check if this is an HTML request (not API/JSON)
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept or not accept.startswith("application/json"):
+            return RedirectResponse(
+                url="/login?error=Please+log+in+to+continue",
+                status_code=status.HTTP_302_FOUND,
+            )
+
+    # For API requests or other errors, return JSON
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
     )
 
 

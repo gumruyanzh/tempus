@@ -221,7 +221,7 @@ async def create_campaign(
             action=AuditAction.CAMPAIGN_CREATED,
             user_id=user.id,
             resource_type="campaign",
-            resource_id=campaign.id,
+            resource_id=str(campaign.id),
             details={
                 "topic": topic,
                 "total_tweets": campaign.total_tweets,

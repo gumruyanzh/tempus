@@ -32,11 +32,17 @@ def upgrade() -> None:
     op.execute("ALTER TYPE auditaction ADD VALUE IF NOT EXISTS 'CAMPAIGN_CANCELLED'")
     op.execute("ALTER TYPE auditaction ADD VALUE IF NOT EXISTS 'CAMPAIGN_COMPLETED'")
 
-    # Create campaignstatus enum
+    # Create campaignstatus enum (if not exists)
     op.execute("""
-        CREATE TYPE campaignstatus AS ENUM (
-            'DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED'
-        )
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'campaignstatus') THEN
+                CREATE TYPE campaignstatus AS ENUM (
+                    'DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED'
+                );
+            END IF;
+        END
+        $$;
     """)
 
     # Create auto_campaigns table
@@ -49,7 +55,7 @@ def upgrade() -> None:
         sa.Column("topic", sa.Text(), nullable=False),
         sa.Column(
             "tone",
-            sa.Enum(
+            postgresql.ENUM(
                 "PROFESSIONAL",
                 "CASUAL",
                 "VIRAL",

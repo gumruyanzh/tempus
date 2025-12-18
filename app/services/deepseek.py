@@ -86,13 +86,16 @@ Output format:
         prompt: str,
         tone: TweetTone = TweetTone.PROFESSIONAL,
         custom_system_prompt: Optional[str] = None,
+        instructions: Optional[str] = None,
     ) -> str:
         """Generate a single tweet."""
         system_prompt = self._build_system_prompt(tone, custom_system_prompt)
 
+        instructions_text = f"\n\nAdditional instructions: {instructions}" if instructions else ""
+
         user_prompt = f"""Generate a single tweet based on the following:
 
-Topic/Content: {prompt}
+Topic/Content: {prompt}{instructions_text}
 
 Remember: Maximum 280 characters. Return ONLY the tweet text."""
 
@@ -104,7 +107,7 @@ Remember: Maximum 280 characters. Return ONLY the tweet text."""
             # Try to regenerate with stricter instruction
             user_prompt = f"""Generate a single tweet based on the following:
 
-Topic/Content: {prompt}
+Topic/Content: {prompt}{instructions_text}
 
 IMPORTANT: Your response was too long. The tweet MUST be under 280 characters.
 Return ONLY the tweet text, no explanations."""
@@ -130,6 +133,7 @@ Return ONLY the tweet text, no explanations."""
         num_tweets: int = 3,
         tone: TweetTone = TweetTone.PROFESSIONAL,
         custom_system_prompt: Optional[str] = None,
+        instructions: Optional[str] = None,
     ) -> list[str]:
         """Generate a thread of tweets."""
         if num_tweets < 2:
@@ -139,9 +143,11 @@ Return ONLY the tweet text, no explanations."""
 
         system_prompt = self._build_system_prompt(tone, custom_system_prompt)
 
+        instructions_text = f"\n\nAdditional instructions: {instructions}" if instructions else ""
+
         user_prompt = f"""Generate a Twitter thread with exactly {num_tweets} tweets based on the following:
 
-Topic/Content: {prompt}
+Topic/Content: {prompt}{instructions_text}
 
 Requirements:
 1. Each tweet must be under 280 characters

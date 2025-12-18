@@ -61,6 +61,7 @@ async def generate_tweet(
     user: RateLimitedUser,
     prompt: Annotated[str, Form()],
     tone: Annotated[str, Form()] = "professional",
+    instructions: Annotated[Optional[str], Form()] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a single tweet using DeepSeek API."""
@@ -88,6 +89,7 @@ async def generate_tweet(
             prompt=prompt,
             tone=tone_enum,
             custom_system_prompt=user.default_prompt_template,
+            instructions=instructions,
         )
 
         # Log audit
@@ -139,6 +141,7 @@ async def generate_thread(
     prompt: Annotated[str, Form()],
     num_tweets: Annotated[int, Form()] = 3,
     tone: Annotated[str, Form()] = "professional",
+    instructions: Annotated[Optional[str], Form()] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a tweet thread using DeepSeek API."""
@@ -166,6 +169,7 @@ async def generate_thread(
             num_tweets=num_tweets,
             tone=tone_enum,
             custom_system_prompt=user.default_prompt_template,
+            instructions=instructions,
         )
 
         csrf_token = generate_csrf_token()

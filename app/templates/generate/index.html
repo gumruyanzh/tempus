@@ -57,6 +57,18 @@
                     </div>
                 </div>
 
+                <div>
+                    <label for="instructions" class="block text-sm font-medium text-gray-700">
+                        Custom Instructions (optional)
+                    </label>
+                    <div class="mt-1">
+                        <textarea id="instructions" name="instructions" rows="2" {% if not has_api_key %}disabled{% endif %}
+                            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                            placeholder="e.g., include a statistic, add emojis, mention @username, use hashtags..."></textarea>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500">Additional instructions for how the tweet should be generated</p>
+                </div>
+
                 <button type="submit" {% if not has_api_key %}disabled{% endif %}
                     class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
                     Generate Tweet
@@ -114,6 +126,18 @@
                             </select>
                         </div>
                     </div>
+                </div>
+
+                <div>
+                    <label for="thread_instructions" class="block text-sm font-medium text-gray-700">
+                        Custom Instructions (optional)
+                    </label>
+                    <div class="mt-1">
+                        <textarea id="thread_instructions" name="instructions" rows="2" {% if not has_api_key %}disabled{% endif %}
+                            class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                            placeholder="e.g., include examples, add a CTA at the end, use bullet points..."></textarea>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500">Additional instructions for how the thread should be generated</p>
                 </div>
 
                 <button type="submit" {% if not has_api_key %}disabled{% endif %}

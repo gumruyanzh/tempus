@@ -37,6 +37,7 @@ async def settings_page(
 
     # Get API key info
     deepseek_key = await user_service.get_api_key(user.id, APIKeyType.DEEPSEEK)
+    tavily_key = await user_service.get_api_key(user.id, APIKeyType.TAVILY)
 
     # Get Twitter account
     twitter_account = await twitter_service.get_oauth_account(user.id)
@@ -49,6 +50,7 @@ async def settings_page(
             "request": request,
             "user": user,
             "deepseek_key": deepseek_key,
+            "tavily_key": tavily_key,
             "twitter_account": twitter_account,
             "tones": [t.value for t in TweetTone],
             "csrf_token": csrf_token,
@@ -234,6 +236,91 @@ async def delete_deepseek_key(
 
     return RedirectResponse(
         url="/settings?success=API+key+deleted",
+        status_code=302,
+    )
+
+
+@router.post("/tavily-key")
+async def update_tavily_key(
+    request: Request,
+    user: CurrentUser,
+    api_key: Annotated[str, Form()],
+    db: AsyncSession = Depends(get_db),
+):
+    """Update Tavily API key."""
+    user_service = UserService(db)
+    audit_service = AuditService(db)
+
+    # Basic validation - Tavily keys start with "tvly-"
+    if not api_key.startswith("tvly-"):
+        return RedirectResponse(
+            url="/settings?error=Invalid+Tavily+API+key+format",
+            status_code=302,
+        )
+
+    # Check if key already exists
+    existing_key = await user_service.get_api_key(user.id, APIKeyType.TAVILY)
+
+    # Store the key
+    await user_service.store_api_key(
+        user=user,
+        key_type=APIKeyType.TAVILY,
+        api_key=api_key,
+    )
+
+    # Log audit
+    action = "rotated" if existing_key else "created"
+    if existing_key:
+        await audit_service.log_api_key_rotated(
+            user_id=user.id,
+            key_type="tavily",
+            ip_address=get_client_ip(request),
+        )
+    else:
+        await audit_service.log_api_key_created(
+            user_id=user.id,
+            key_type="tavily",
+            ip_address=get_client_ip(request),
+        )
+    await db.commit()
+
+    logger.info(
+        f"Tavily API key {action}",
+        user_id=str(user.id),
+    )
+
+    return RedirectResponse(
+        url=f"/settings?success=Tavily+API+key+{action}",
+        status_code=302,
+    )
+
+
+@router.post("/tavily-key/delete")
+async def delete_tavily_key(
+    request: Request,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete Tavily API key."""
+    user_service = UserService(db)
+    audit_service = AuditService(db)
+
+    success = await user_service.delete_api_key(user.id, APIKeyType.TAVILY)
+
+    if success:
+        await audit_service.log(
+            action=audit_service.log.__self__.__class__.__bases__[0],
+            user_id=user.id,
+            resource_type="api_key",
+            details={"key_type": "tavily", "action": "deleted"},
+            ip_address=get_client_ip(request),
+        )
+        await db.commit()
+
+        logger.info("Tavily API key deleted", user_id=str(user.id))
+
+    return RedirectResponse(
+        url="/settings?success=Tavily+API+key+deleted",
         status_code=302,
     )
 

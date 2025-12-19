@@ -85,3 +85,40 @@ async def init_db() -> None:
 async def close_db() -> None:
     """Close database connections."""
     await engine.dispose()
+
+
+def get_celery_session_factory():
+    """Create a fresh session factory for Celery tasks.
+
+    This creates a new engine and session factory each time to avoid
+    event loop issues when running async code in Celery workers.
+    """
+    celery_engine = create_async_engine(
+        settings.database_url,
+        echo=settings.debug,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+    )
+    return async_sessionmaker(
+        celery_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    ), celery_engine
+
+
+@asynccontextmanager
+async def get_celery_db_context():
+    """Context manager for Celery tasks that creates fresh connections."""
+    session_factory, celery_engine = get_celery_session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+            await celery_engine.dispose()

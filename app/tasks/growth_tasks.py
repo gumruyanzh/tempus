@@ -8,7 +8,7 @@ from uuid import UUID
 from celery import shared_task
 from sqlalchemy import select
 
-from app.core.database import async_session_factory
+from app.core.database import get_celery_db_context
 from app.core.logging import get_logger
 from app.models.growth_strategy import (
     ActionType,
@@ -51,7 +51,7 @@ def process_growth_strategies() -> dict:
 
 async def _process_growth_strategies_async() -> dict:
     """Async implementation of growth strategy processing."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         growth_service = GrowthStrategyService(db)
         active_strategies = await growth_service.get_active_strategies()
 
@@ -99,7 +99,7 @@ def execute_strategy_engagements(self, strategy_id: str) -> dict:
 
 async def _execute_strategy_engagements_async(task, strategy_id: str) -> dict:
     """Async implementation of engagement execution."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         twitter_service = None
         try:
             growth_service = GrowthStrategyService(db)
@@ -360,7 +360,7 @@ def discover_engagement_targets(strategy_id: str) -> dict:
 
 async def _discover_engagement_targets_async(strategy_id: str) -> dict:
     """Async implementation of target discovery."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         twitter_service = None
         try:
             growth_service = GrowthStrategyService(db)
@@ -452,7 +452,7 @@ def update_strategy_metrics(strategy_id: str) -> dict:
 
 async def _update_strategy_metrics_async(strategy_id: str) -> dict:
     """Async implementation of metrics update."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         twitter_service = None
         try:
             growth_service = GrowthStrategyService(db)
@@ -510,7 +510,7 @@ def update_all_strategy_metrics() -> dict:
 
 async def _update_all_strategy_metrics_async() -> dict:
     """Async implementation of updating all strategy metrics."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         growth_service = GrowthStrategyService(db)
         active_strategies = await growth_service.get_active_strategies()
 
@@ -531,7 +531,7 @@ def ai_strategy_review(strategy_id: str) -> dict:
 
 async def _ai_strategy_review_async(strategy_id: str) -> dict:
     """Async implementation of AI strategy review."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         try:
             growth_service = GrowthStrategyService(db)
             user_service = UserService(db)
@@ -649,7 +649,7 @@ def cleanup_rate_limit_trackers() -> dict:
 
 async def _cleanup_rate_limit_trackers_async() -> dict:
     """Async implementation of rate limit tracker cleanup."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         rate_limiter = EngagementRateLimiter(db)
         deleted = await rate_limiter.reset_daily_counts()
         await db.commit()

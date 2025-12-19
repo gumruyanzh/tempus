@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from celery import shared_task
 from sqlalchemy import delete
 
-from app.core.database import async_session_factory
+from app.core.database import get_celery_db_context
 from app.core.logging import get_logger
 from app.models.tweet import TweetExecutionLog
 
@@ -31,7 +31,7 @@ def cleanup_old_execution_logs(days_to_keep: int = 30) -> dict:
 
 async def _cleanup_old_execution_logs_async(days_to_keep: int) -> dict:
     """Async implementation of execution log cleanup."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
 
         stmt = delete(TweetExecutionLog).where(

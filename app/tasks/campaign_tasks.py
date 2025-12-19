@@ -7,7 +7,7 @@ from uuid import UUID
 from celery import shared_task
 from sqlalchemy import select
 
-from app.core.database import async_session_factory
+from app.core.database import get_celery_db_context
 from app.core.logging import get_logger
 from app.models.campaign import AutoCampaign, CampaignStatus
 from app.models.tweet import ScheduledTweet, TweetStatus
@@ -41,7 +41,7 @@ def process_campaign_tweets() -> dict:
 
 async def _process_campaign_tweets_async() -> dict:
     """Async implementation of campaign tweet processing."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         campaign_service = CampaignService(db)
         pending_tweets = await campaign_service.get_pending_campaign_tweets(limit=20)
 
@@ -73,7 +73,7 @@ def generate_and_post_campaign_tweet(self, tweet_id: str) -> dict:
 
 async def _generate_and_post_campaign_tweet_async(task, tweet_id: str) -> dict:
     """Async implementation of campaign tweet generation and posting."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         deepseek_service = None
         web_search_service = None
         twitter_service = None
@@ -469,7 +469,7 @@ def check_completed_campaigns() -> dict:
 
 async def _check_completed_campaigns_async() -> dict:
     """Async implementation of completed campaign checking."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         # Find active campaigns that might be complete
         stmt = select(AutoCampaign).where(
             AutoCampaign.status == CampaignStatus.ACTIVE,

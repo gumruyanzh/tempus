@@ -8,7 +8,7 @@ from uuid import UUID
 from celery import shared_task
 from sqlalchemy import select
 
-from app.core.database import async_session_factory
+from app.core.database import get_celery_db_context
 from app.core.logging import get_logger
 from app.models.tweet import ScheduledTweet, TweetExecutionLog, TweetStatus
 from app.services.audit import AuditService
@@ -42,7 +42,7 @@ def post_scheduled_tweet(self, tweet_id: str) -> dict:
 
 async def _post_scheduled_tweet_async(task, tweet_id: str) -> dict:
     """Async implementation of tweet posting."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         try:
             # Get the scheduled tweet
             stmt = select(ScheduledTweet).where(ScheduledTweet.id == UUID(tweet_id))
@@ -206,7 +206,7 @@ def process_pending_tweets() -> dict:
 
 async def _process_pending_tweets_async() -> dict:
     """Async implementation of pending tweet processing."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         tweet_service = TweetService(db)
         pending_tweets = await tweet_service.get_pending_tweets(limit=50)
 
@@ -232,7 +232,7 @@ def retry_failed_tweet(tweet_id: str) -> dict:
 
 async def _retry_failed_tweet_async(tweet_id: str) -> dict:
     """Async implementation of failed tweet retry."""
-    async with async_session_factory() as db:
+    async with get_celery_db_context() as db:
         stmt = select(ScheduledTweet).where(ScheduledTweet.id == UUID(tweet_id))
         result = await db.execute(stmt)
         scheduled_tweet = result.scalar_one_or_none()

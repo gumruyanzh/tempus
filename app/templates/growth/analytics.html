@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - {{ strategy.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+        <a href="/growth/{{ strategy.id }}" class="text-indigo-600 hover:text-indigo-500 text-sm">&larr; Back to Strategy</a>
+    </div>
+
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-semibold text-gray-900">Analytics: {{ strategy.name }}</h1>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+            {% if strategy.status.value == 'active' %}bg-green-100 text-green-800
+            {% elif strategy.status.value == 'paused' %}bg-yellow-100 text-yellow-800
+            {% elif strategy.status.value == 'completed' %}bg-blue-100 text-blue-800
+            {% else %}bg-gray-100 text-gray-800{% endif %}">
+            {{ strategy.status.value|title }}
+        </span>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Followers Gained</p>
+            <p class="text-3xl font-bold text-green-600">+{{ analytics.followers_gained }}</p>
+            <p class="text-xs text-gray-400 mt-1">Target: +{{ strategy.target_followers - strategy.starting_followers }}</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Total Actions</p>
+            <p class="text-3xl font-bold text-indigo-600">{{ analytics.total_actions }}</p>
+            <p class="text-xs text-gray-400 mt-1">All engagements</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Days Elapsed</p>
+            <p class="text-3xl font-bold text-gray-900">{{ analytics.days_elapsed }}</p>
+            <p class="text-xs text-gray-400 mt-1">of {{ strategy.duration_days }} days</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Success Rate</p>
+            <p class="text-3xl font-bold text-blue-600">{{ "%.1f"|format(analytics.success_rate) }}%</p>
+            <p class="text-xs text-gray-400 mt-1">Successful actions</p>
+        </div>
+    </div>
+
+    <!-- Growth Progress -->
+    <div class="bg-white shadow rounded-lg mb-6">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Follower Growth</h2>
+        </div>
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <p class="text-sm text-gray-500">Started at</p>
+                    <p class="text-2xl font-semibold text-gray-900">{{ strategy.starting_followers }}</p>
+                </div>
+                <div class="flex-1 mx-8">
+                    {% set progress = ((strategy.current_followers - strategy.starting_followers) / (strategy.target_followers - strategy.starting_followers) * 100) if strategy.target_followers > strategy.starting_followers else 0 %}
+                    <div class="relative">
+                        <div class="w-full bg-gray-200 rounded-full h-4">
+                            <div class="bg-gradient-to-r from-indigo-500 to-green-500 h-4 rounded-full transition-all" style="width: {{ [progress, 100]|min }}%"></div>
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <span class="text-xs font-medium text-white drop-shadow">{{ "%.1f"|format(progress) }}%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm text-gray-500">Target</p>
+                    <p class="text-2xl font-semibold text-gray-900">{{ strategy.target_followers }}</p>
+                </div>
+            </div>
+            <div class="text-center">
+                <p class="text-4xl font-bold text-indigo-600">{{ strategy.current_followers }}</p>
+                <p class="text-sm text-gray-500">Current Followers</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Breakdown -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Action Breakdown</h2>
+            </div>
+            <div class="p-6">
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-600">Follows</span>
+                            <span class="font-medium">{{ strategy.total_follows }}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            {% set follow_pct = (strategy.total_follows / analytics.total_actions * 100) if analytics.total_actions > 0 else 0 %}
+                            <div class="bg-blue-500 h-2 rounded-full" style="width: {{ follow_pct }}%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-600">Likes</span>
+                            <span class="font-medium">{{ strategy.total_likes }}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            {% set like_pct = (strategy.total_likes / analytics.total_actions * 100) if analytics.total_actions > 0 else 0 %}
+                            <div class="bg-red-500 h-2 rounded-full" style="width: {{ like_pct }}%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-600">Retweets</span>
+                            <span class="font-medium">{{ strategy.total_retweets }}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            {% set rt_pct = (strategy.total_retweets / analytics.total_actions * 100) if analytics.total_actions > 0 else 0 %}
+                            <div class="bg-green-500 h-2 rounded-full" style="width: {{ rt_pct }}%"></div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-gray-600">Replies</span>
+                            <span class="font-medium">{{ strategy.total_replies }}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            {% set reply_pct = (strategy.total_replies / analytics.total_actions * 100) if analytics.total_actions > 0 else 0 %}
+                            <div class="bg-purple-500 h-2 rounded-full" style="width: {{ reply_pct }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Quotas vs Actual -->
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Daily Quotas</h2>
+            </div>
+            <div class="p-6">
+                <div class="overflow-hidden">
+                    <table class="min-w-full">
+                        <thead>
+                            <tr>
+                                <th class="text-left text-xs font-medium text-gray-500 uppercase pb-2">Action</th>
+                                <th class="text-right text-xs font-medium text-gray-500 uppercase pb-2">Daily Goal</th>
+                                <th class="text-right text-xs font-medium text-gray-500 uppercase pb-2">Avg/Day</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr>
+                                <td class="py-2 text-sm text-gray-900">Follows</td>
+                                <td class="py-2 text-sm text-gray-900 text-right">{{ strategy.daily_follows }}</td>
+                                <td class="py-2 text-sm text-right {% if analytics.days_elapsed > 0 %}{% if strategy.total_follows / analytics.days_elapsed >= strategy.daily_follows %}text-green-600{% else %}text-yellow-600{% endif %}{% endif %}">
+                                    {{ "%.1f"|format(strategy.total_follows / analytics.days_elapsed) if analytics.days_elapsed > 0 else 0 }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 text-sm text-gray-900">Likes</td>
+                                <td class="py-2 text-sm text-gray-900 text-right">{{ strategy.daily_likes }}</td>
+                                <td class="py-2 text-sm text-right {% if analytics.days_elapsed > 0 %}{% if strategy.total_likes / analytics.days_elapsed >= strategy.daily_likes %}text-green-600{% else %}text-yellow-600{% endif %}{% endif %}">
+                                    {{ "%.1f"|format(strategy.total_likes / analytics.days_elapsed) if analytics.days_elapsed > 0 else 0 }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 text-sm text-gray-900">Retweets</td>
+                                <td class="py-2 text-sm text-gray-900 text-right">{{ strategy.daily_retweets }}</td>
+                                <td class="py-2 text-sm text-right {% if analytics.days_elapsed > 0 %}{% if strategy.total_retweets / analytics.days_elapsed >= strategy.daily_retweets %}text-green-600{% else %}text-yellow-600{% endif %}{% endif %}">
+                                    {{ "%.1f"|format(strategy.total_retweets / analytics.days_elapsed) if analytics.days_elapsed > 0 else 0 }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="py-2 text-sm text-gray-900">Replies</td>
+                                <td class="py-2 text-sm text-gray-900 text-right">{{ strategy.daily_replies }}</td>
+                                <td class="py-2 text-sm text-right {% if analytics.days_elapsed > 0 %}{% if strategy.total_replies / analytics.days_elapsed >= strategy.daily_replies %}text-green-600{% else %}text-yellow-600{% endif %}{% endif %}">
+                                    {{ "%.1f"|format(strategy.total_replies / analytics.days_elapsed) if analytics.days_elapsed > 0 else 0 }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conversion Metrics -->
+    <div class="bg-white shadow rounded-lg mb-6">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Conversion Metrics</h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="text-center">
+                    <p class="text-sm text-gray-500">Follow-to-Follower Rate</p>
+                    {% set f2f = (analytics.followers_gained / strategy.total_follows * 100) if strategy.total_follows > 0 else 0 %}
+                    <p class="text-3xl font-bold {% if f2f >= 5 %}text-green-600{% elif f2f >= 2 %}text-yellow-600{% else %}text-red-600{% endif %}">{{ "%.2f"|format(f2f) }}%</p>
+                    <p class="text-xs text-gray-400 mt-1">Industry avg: 2-5%</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-sm text-gray-500">Actions per New Follower</p>
+                    {% set apf = (analytics.total_actions / analytics.followers_gained) if analytics.followers_gained > 0 else 0 %}
+                    <p class="text-3xl font-bold {% if apf <= 50 %}text-green-600{% elif apf <= 100 %}text-yellow-600{% else %}text-red-600{% endif %}">{{ "%.1f"|format(apf) }}</p>
+                    <p class="text-xs text-gray-400 mt-1">Lower is better</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-sm text-gray-500">Growth Rate/Day</p>
+                    {% set gpd = (analytics.followers_gained / analytics.days_elapsed) if analytics.days_elapsed > 0 else 0 %}
+                    <p class="text-3xl font-bold text-indigo-600">{{ "%.1f"|format(gpd) }}</p>
+                    <p class="text-xs text-gray-400 mt-1">Followers/day</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Projections -->
+    <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Projections</h2>
+        </div>
+        <div class="p-6">
+            {% set gpd = (analytics.followers_gained / analytics.days_elapsed) if analytics.days_elapsed > 0 else 0 %}
+            {% set days_remaining = strategy.duration_days - analytics.days_elapsed %}
+            {% set projected_total = strategy.current_followers + (gpd * days_remaining) %}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <p class="text-sm text-gray-500 mb-2">Projected Final Followers</p>
+                    <p class="text-4xl font-bold {% if projected_total >= strategy.target_followers %}text-green-600{% else %}text-yellow-600{% endif %}">
+                        {{ projected_total|int }}
+                    </p>
+                    {% if projected_total >= strategy.target_followers %}
+                    <p class="text-sm text-green-600 mt-2">On track to exceed target by {{ (projected_total - strategy.target_followers)|int }}</p>
+                    {% else %}
+                    <p class="text-sm text-yellow-600 mt-2">{{ (strategy.target_followers - projected_total)|int }} below target at current pace</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500 mb-2">Days Remaining</p>
+                    <p class="text-4xl font-bold text-gray-900">{{ days_remaining }}</p>
+                    <p class="text-sm text-gray-500 mt-2">Ends {{ strategy.end_date.strftime('%B %d, %Y') }}</p>
+                </div>
+            </div>
+
+            {% if projected_total < strategy.target_followers and days_remaining > 0 %}
+            <div class="mt-6 p-4 bg-yellow-50 rounded-lg">
+                <p class="text-sm font-medium text-yellow-800">To reach your target:</p>
+                {% set needed_gpd = (strategy.target_followers - strategy.current_followers) / days_remaining %}
+                <p class="text-sm text-yellow-700 mt-1">You need to gain {{ "%.1f"|format(needed_gpd) }} followers/day (currently {{ "%.1f"|format(gpd) }}/day)</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

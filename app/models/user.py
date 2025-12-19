@@ -14,6 +14,7 @@ from app.models.base import GUID, SoftDeleteMixin, TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from app.models.audit import AuditLog
     from app.models.campaign import AutoCampaign
+    from app.models.growth_strategy import GrowthStrategy
     from app.models.oauth import OAuthAccount
     from app.models.tweet import ScheduledTweet, TweetDraft
 
@@ -115,6 +116,11 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     )
     campaigns: Mapped[List["AutoCampaign"]] = relationship(
         "AutoCampaign",
+        back_populates="user",
+        lazy="selectin",
+    )
+    growth_strategies: Mapped[List["GrowthStrategy"]] = relationship(
+        "GrowthStrategy",
         back_populates="user",
         lazy="selectin",
     )

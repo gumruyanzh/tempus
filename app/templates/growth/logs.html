@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Log - {{ strategy.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+        <a href="/growth/{{ strategy.id }}" class="text-indigo-600 hover:text-indigo-500 text-sm">&larr; Back to Strategy</a>
+    </div>
+
+    <div class="mb-6">
+        <h1 class="text-2xl font-semibold text-gray-900">Activity Log</h1>
+        <p class="text-gray-500 text-sm mt-1">{{ strategy.name }}</p>
+    </div>
+
+    {% if logs %}
+    <!-- Log Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        {% set total = logs|length %}
+        {% set successful = logs|selectattr('success')|list|length %}
+        {% set failed = total - successful %}
+        {% set follows = logs|selectattr('action_type.value', 'equalto', 'follow')|list|length %}
+        {% set likes = logs|selectattr('action_type.value', 'equalto', 'like')|list|length %}
+        {% set retweets = logs|selectattr('action_type.value', 'equalto', 'retweet')|list|length %}
+        {% set replies = logs|selectattr('action_type.value', 'equalto', 'reply')|list|length %}
+
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Total Actions</p>
+            <p class="text-2xl font-semibold text-gray-900">{{ total }}</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Successful</p>
+            <p class="text-2xl font-semibold text-green-600">{{ successful }}</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Failed</p>
+            <p class="text-2xl font-semibold text-red-600">{{ failed }}</p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">Success Rate</p>
+            <p class="text-2xl font-semibold {% if total > 0 %}{% if successful / total >= 0.9 %}text-green-600{% elif successful / total >= 0.7 %}text-yellow-600{% else %}text-red-600{% endif %}{% endif %}">
+                {{ "%.1f"|format(successful / total * 100) if total > 0 else 0 }}%
+            </p>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <p class="text-sm text-gray-500">By Type</p>
+            <p class="text-xs text-gray-600">F:{{ follows }} L:{{ likes }} R:{{ retweets }} C:{{ replies }}</p>
+        </div>
+    </div>
+
+    <!-- Logs List -->
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <ul class="divide-y divide-gray-200">
+            {% for log in logs %}
+            <li class="px-4 py-4 sm:px-6 {% if not log.success %}bg-red-50{% endif %}">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <!-- Action Icon -->
+                        {% if log.action_type.value == 'follow' %}
+                        <div class="flex-shrink-0 p-2 bg-blue-100 rounded-lg">
+                            <svg class="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                            </svg>
+                        </div>
+                        {% elif log.action_type.value == 'unfollow' %}
+                        <div class="flex-shrink-0 p-2 bg-gray-100 rounded-lg">
+                            <svg class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM21 12h-6" />
+                            </svg>
+                        </div>
+                        {% elif log.action_type.value == 'like' %}
+                        <div class="flex-shrink-0 p-2 bg-red-100 rounded-lg">
+                            <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                        </div>
+                        {% elif log.action_type.value == 'retweet' %}
+                        <div class="flex-shrink-0 p-2 bg-green-100 rounded-lg">
+                            <svg class="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                        </div>
+                        {% elif log.action_type.value == 'reply' %}
+                        <div class="flex-shrink-0 p-2 bg-purple-100 rounded-lg">
+                            <svg class="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                        </div>
+                        {% endif %}
+
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-900">
+                                {{ log.action_type.value|title }}
+                                {% if log.twitter_username %}
+                                <a href="https://twitter.com/{{ log.twitter_username }}" target="_blank" class="text-indigo-600 hover:text-indigo-500">
+                                    @{{ log.twitter_username }}
+                                </a>
+                                {% endif %}
+                            </p>
+                            {% if log.tweet_id %}
+                            <p class="text-xs text-gray-500">
+                                <a href="https://twitter.com/i/status/{{ log.tweet_id }}" target="_blank" class="hover:text-indigo-600">
+                                    View Tweet
+                                </a>
+                            </p>
+                            {% endif %}
+                            {% if log.reply_content %}
+                            <p class="text-sm text-gray-600 mt-1">"{{ log.reply_content[:80] }}{% if log.reply_content|length > 80 %}...{% endif %}"</p>
+                            {% endif %}
+                            {% if log.error_message %}
+                            <p class="text-xs text-red-600 mt-1">{{ log.error_message }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-4">
+                        {% if log.success %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            Success
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            Failed
+                        </span>
+                        {% endif %}
+                        <span class="text-xs text-gray-400">
+                            {{ log.created_at.strftime('%Y-%m-%d %H:%M') }}
+                        </span>
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <div class="bg-white shadow rounded-lg p-8 text-center">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No activity yet</h3>
+        <p class="mt-1 text-sm text-gray-500">Engagement actions will appear here as they are executed.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

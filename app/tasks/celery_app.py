@@ -49,6 +49,19 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.maintenance_tasks.cleanup_old_execution_logs",
         "schedule": crontab(hour=3, minute=0),  # Daily at 3 AM UTC
     },
+    # Growth strategy tasks
+    "process-growth-strategies": {
+        "task": "app.tasks.growth_tasks.process_growth_strategies",
+        "schedule": crontab(minute="*/5"),  # Every 5 minutes
+    },
+    "update-all-strategy-metrics": {
+        "task": "app.tasks.growth_tasks.update_all_strategy_metrics",
+        "schedule": crontab(hour=0, minute=0),  # Daily at midnight UTC
+    },
+    "cleanup-rate-limit-trackers": {
+        "task": "app.tasks.growth_tasks.cleanup_rate_limit_trackers",
+        "schedule": crontab(hour=1, minute=0),  # Daily at 1 AM UTC
+    },
 }
 
 # Autodiscover tasks

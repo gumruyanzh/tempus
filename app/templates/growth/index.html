@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Growth Strategies{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">Growth Strategies</h1>
+        <a href="/growth/new" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+            New Strategy
+        </a>
+    </div>
+
+    {% if error %}
+    <div class="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if success %}
+    <div class="mt-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+        {{ success }}
+    </div>
+    {% endif %}
+
+    <p class="mt-2 text-gray-600">
+        AI-powered growth strategies to build your Twitter audience through smart engagement.
+    </p>
+
+    {% if strategies %}
+    <div class="mt-6 space-y-4">
+        {% for item in strategies %}
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="p-6">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center">
+                            <h3 class="text-lg font-medium text-gray-900">{{ item.strategy.name }}</h3>
+                            <span class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                {% if item.strategy.status.value == 'active' %}bg-green-100 text-green-800
+                                {% elif item.strategy.status.value == 'paused' %}bg-yellow-100 text-yellow-800
+                                {% elif item.strategy.status.value == 'completed' %}bg-blue-100 text-blue-800
+                                {% elif item.strategy.status.value == 'draft' %}bg-gray-100 text-gray-800
+                                {% else %}bg-red-100 text-red-800{% endif %}">
+                                {{ item.strategy.status.value|title }}
+                            </span>
+                            {% if item.strategy.verification_status.value != 'none' %}
+                            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                                {% if item.strategy.verification_status.value == 'blue' %}bg-blue-50 text-blue-600
+                                {% else %}bg-yellow-50 text-yellow-600{% endif %}">
+                                {{ item.strategy.verification_status.value|title }} Check
+                            </span>
+                            {% endif %}
+                        </div>
+                        <p class="mt-1 text-sm text-gray-500">{{ item.strategy.original_prompt[:100] }}{% if item.strategy.original_prompt|length > 100 %}...{% endif %}</p>
+                        <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+                            <span>{{ item.strategy.duration_days }} days</span>
+                            <span>{{ item.strategy.daily_follows }}/day follows</span>
+                            <span>Target: {{ item.strategy.target_followers }} followers</span>
+                        </div>
+                    </div>
+                    <a href="/growth/{{ item.strategy.id }}" class="text-indigo-600 hover:text-indigo-500 text-sm font-medium">
+                        View Details
+                    </a>
+                </div>
+
+                <!-- Progress -->
+                <div class="mt-4">
+                    <div class="flex justify-between text-sm text-gray-500 mb-1">
+                        <span>Follower Progress</span>
+                        <span>{{ item.strategy.current_followers }} / {{ item.strategy.target_followers }}</span>
+                    </div>
+                    {% set progress = ((item.strategy.current_followers - item.strategy.starting_followers) / (item.strategy.target_followers - item.strategy.starting_followers) * 100) if item.strategy.target_followers > item.strategy.starting_followers else 0 %}
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="bg-indigo-600 h-2 rounded-full" style="width: {{ [progress, 100]|min }}%"></div>
+                    </div>
+                </div>
+
+                <!-- Engagement Stats -->
+                <div class="mt-4 flex items-center space-x-6 text-sm">
+                    <span class="text-gray-500">
+                        <span class="font-medium text-gray-900">{{ item.analytics.total_actions }}</span> total actions
+                    </span>
+                    <span class="text-green-600">
+                        +{{ item.strategy.followers_gained }} followers
+                    </span>
+                    {% if item.analytics.days_elapsed > 0 %}
+                    <span class="text-gray-400">
+                        Day {{ item.analytics.days_elapsed }} of {{ item.strategy.duration_days }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="mt-6 bg-white shadow rounded-lg p-8 text-center">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No growth strategies</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by creating your first AI-powered growth strategy.</p>
+        <div class="mt-6">
+            <a href="/growth/new" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                Create Strategy
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

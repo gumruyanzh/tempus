@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import DateTime, String, TypeDecorator, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -76,7 +77,7 @@ class TimestampMixin:
 class SoftDeleteMixin:
     """Mixin for soft delete functionality."""
 
-    deleted_at: Mapped[datetime | None] = mapped_column(
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         default=None,

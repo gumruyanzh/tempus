@@ -48,7 +48,17 @@ class TwitterService:
     TWITTER_TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
     TWITTER_API_BASE = "https://api.twitter.com/2"
     # offline.access is required to get refresh tokens for long-lived sessions
-    TWITTER_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"]
+    # like.read/write for liking tweets, follows.read/write for following users
+    TWITTER_SCOPES = [
+        "tweet.read",
+        "tweet.write",
+        "users.read",
+        "offline.access",
+        "like.read",
+        "like.write",
+        "follows.read",
+        "follows.write",
+    ]
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -764,3 +774,587 @@ class TwitterService:
             return ""
 
         return "\n".join(parts)
+
+    # Engagement Methods for Growth Strategy
+
+    async def follow_user(
+        self,
+        access_token: str,
+        target_user_id: str,
+    ) -> dict[str, Any]:
+        """
+        Follow a Twitter user.
+
+        Args:
+            access_token: Valid Twitter access token
+            target_user_id: Twitter user ID to follow
+
+        Returns:
+            Response data with following status
+        """
+        client = await self.get_client()
+
+        # First get current user's ID
+        current_user = await self.get_current_user(access_token)
+        source_user_id = current_user["data"]["id"]
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        response = await client.post(
+            f"{self.TWITTER_API_BASE}/users/{source_user_id}/following",
+            headers=headers,
+            json={"target_user_id": target_user_id},
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code not in [200, 201]:
+            raise TwitterAPIError(
+                f"Failed to follow user: {response.text}",
+                status_code=response.status_code,
+            )
+
+        logger.info("User followed", target_user_id=target_user_id)
+        return response.json()
+
+    async def unfollow_user(
+        self,
+        access_token: str,
+        target_user_id: str,
+    ) -> dict[str, Any]:
+        """
+        Unfollow a Twitter user.
+
+        Args:
+            access_token: Valid Twitter access token
+            target_user_id: Twitter user ID to unfollow
+
+        Returns:
+            Response data with following status
+        """
+        client = await self.get_client()
+
+        # Get current user's ID
+        current_user = await self.get_current_user(access_token)
+        source_user_id = current_user["data"]["id"]
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        response = await client.delete(
+            f"{self.TWITTER_API_BASE}/users/{source_user_id}/following/{target_user_id}",
+            headers=headers,
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to unfollow user: {response.text}",
+                status_code=response.status_code,
+            )
+
+        logger.info("User unfollowed", target_user_id=target_user_id)
+        return response.json()
+
+    async def get_following(
+        self,
+        access_token: str,
+        user_id: str,
+        max_results: int = 100,
+        pagination_token: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Get list of users that a user is following.
+
+        Args:
+            access_token: Valid Twitter access token
+            user_id: Twitter user ID
+            max_results: Maximum results per page (1-1000)
+            pagination_token: Token for pagination
+
+        Returns:
+            Dict with users list and pagination info
+        """
+        client = await self.get_client()
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        params = {
+            "max_results": min(max_results, 1000),
+            "user.fields": "id,username,name,description,public_metrics,verified",
+        }
+        if pagination_token:
+            params["pagination_token"] = pagination_token
+
+        response = await client.get(
+            f"{self.TWITTER_API_BASE}/users/{user_id}/following",
+            headers=headers,
+            params=params,
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to get following: {response.text}",
+                status_code=response.status_code,
+            )
+
+        return response.json()
+
+    async def get_followers(
+        self,
+        access_token: str,
+        user_id: str,
+        max_results: int = 100,
+        pagination_token: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Get list of users following a user.
+
+        Args:
+            access_token: Valid Twitter access token
+            user_id: Twitter user ID
+            max_results: Maximum results per page (1-1000)
+            pagination_token: Token for pagination
+
+        Returns:
+            Dict with users list and pagination info
+        """
+        client = await self.get_client()
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        params = {
+            "max_results": min(max_results, 1000),
+            "user.fields": "id,username,name,description,public_metrics,verified",
+        }
+        if pagination_token:
+            params["pagination_token"] = pagination_token
+
+        response = await client.get(
+            f"{self.TWITTER_API_BASE}/users/{user_id}/followers",
+            headers=headers,
+            params=params,
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to get followers: {response.text}",
+                status_code=response.status_code,
+            )
+
+        return response.json()
+
+    async def like_tweet(
+        self,
+        access_token: str,
+        tweet_id: str,
+    ) -> dict[str, Any]:
+        """
+        Like a tweet.
+
+        Args:
+            access_token: Valid Twitter access token
+            tweet_id: Tweet ID to like
+
+        Returns:
+            Response data with liked status
+        """
+        client = await self.get_client()
+
+        # Get current user's ID
+        current_user = await self.get_current_user(access_token)
+        user_id = current_user["data"]["id"]
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        response = await client.post(
+            f"{self.TWITTER_API_BASE}/users/{user_id}/likes",
+            headers=headers,
+            json={"tweet_id": tweet_id},
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code not in [200, 201]:
+            raise TwitterAPIError(
+                f"Failed to like tweet: {response.text}",
+                status_code=response.status_code,
+            )
+
+        logger.info("Tweet liked", tweet_id=tweet_id)
+        return response.json()
+
+    async def unlike_tweet(
+        self,
+        access_token: str,
+        tweet_id: str,
+    ) -> dict[str, Any]:
+        """
+        Unlike a tweet.
+
+        Args:
+            access_token: Valid Twitter access token
+            tweet_id: Tweet ID to unlike
+
+        Returns:
+            Response data with liked status
+        """
+        client = await self.get_client()
+
+        # Get current user's ID
+        current_user = await self.get_current_user(access_token)
+        user_id = current_user["data"]["id"]
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        response = await client.delete(
+            f"{self.TWITTER_API_BASE}/users/{user_id}/likes/{tweet_id}",
+            headers=headers,
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to unlike tweet: {response.text}",
+                status_code=response.status_code,
+            )
+
+        logger.info("Tweet unliked", tweet_id=tweet_id)
+        return response.json()
+
+    async def retweet(
+        self,
+        access_token: str,
+        tweet_id: str,
+    ) -> dict[str, Any]:
+        """
+        Retweet a tweet.
+
+        Args:
+            access_token: Valid Twitter access token
+            tweet_id: Tweet ID to retweet
+
+        Returns:
+            Response data with retweet status
+        """
+        client = await self.get_client()
+
+        # Get current user's ID
+        current_user = await self.get_current_user(access_token)
+        user_id = current_user["data"]["id"]
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        response = await client.post(
+            f"{self.TWITTER_API_BASE}/users/{user_id}/retweets",
+            headers=headers,
+            json={"tweet_id": tweet_id},
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code not in [200, 201]:
+            raise TwitterAPIError(
+                f"Failed to retweet: {response.text}",
+                status_code=response.status_code,
+            )
+
+        logger.info("Tweet retweeted", tweet_id=tweet_id)
+        return response.json()
+
+    async def unretweet(
+        self,
+        access_token: str,
+        tweet_id: str,
+    ) -> dict[str, Any]:
+        """
+        Remove a retweet.
+
+        Args:
+            access_token: Valid Twitter access token
+            tweet_id: Tweet ID to unretweet
+
+        Returns:
+            Response data with retweet status
+        """
+        client = await self.get_client()
+
+        # Get current user's ID
+        current_user = await self.get_current_user(access_token)
+        user_id = current_user["data"]["id"]
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        response = await client.delete(
+            f"{self.TWITTER_API_BASE}/users/{user_id}/retweets/{tweet_id}",
+            headers=headers,
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to unretweet: {response.text}",
+                status_code=response.status_code,
+            )
+
+        logger.info("Tweet unretweeted", tweet_id=tweet_id)
+        return response.json()
+
+    async def reply_to_tweet(
+        self,
+        access_token: str,
+        tweet_id: str,
+        text: str,
+    ) -> dict[str, Any]:
+        """
+        Reply to a tweet.
+
+        Args:
+            access_token: Valid Twitter access token
+            tweet_id: Tweet ID to reply to
+            text: Reply text content
+
+        Returns:
+            Response data with reply tweet info
+        """
+        return await self.post_tweet(
+            access_token=access_token,
+            text=text,
+            reply_to_tweet_id=tweet_id,
+        )
+
+    async def get_user_metrics(
+        self,
+        access_token: str,
+        user_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Get user public metrics (followers, following, tweet count).
+
+        Args:
+            access_token: Valid Twitter access token
+            user_id: User ID (defaults to current user)
+
+        Returns:
+            User data with public metrics
+        """
+        client = await self.get_client()
+
+        if user_id is None:
+            # Get current user
+            current_user = await self.get_current_user(access_token)
+            user_id = current_user["data"]["id"]
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        params = {
+            "user.fields": "public_metrics,verified,description,created_at",
+        }
+
+        response = await client.get(
+            f"{self.TWITTER_API_BASE}/users/{user_id}",
+            headers=headers,
+            params=params,
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to get user metrics: {response.text}",
+                status_code=response.status_code,
+            )
+
+        return response.json()
+
+    async def search_users(
+        self,
+        access_token: str,
+        query: str,
+        max_results: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        Search for Twitter users by username or name.
+
+        Note: This uses tweet search and extracts unique authors as
+        there's no direct user search in Twitter API v2 free tier.
+
+        Args:
+            access_token: Valid Twitter access token
+            query: Search query
+            max_results: Maximum number of users to return
+
+        Returns:
+            List of user objects with profile info
+        """
+        # Search for tweets mentioning the query to find relevant users
+        tweets = await self.search_recent_tweets(
+            access_token=access_token,
+            query=query,
+            max_results=100,
+            sort_order="relevancy",
+        )
+
+        # Extract unique users
+        seen_users = set()
+        users = []
+
+        for tweet in tweets:
+            username = tweet.get("author_username")
+            if username and username not in seen_users:
+                seen_users.add(username)
+                users.append({
+                    "username": username,
+                    "name": tweet.get("author_name"),
+                    "verified": tweet.get("author_verified", False),
+                })
+
+                if len(users) >= max_results:
+                    break
+
+        return users
+
+    async def get_user_by_username(
+        self,
+        access_token: str,
+        username: str,
+    ) -> Optional[dict[str, Any]]:
+        """
+        Get user info by username.
+
+        Args:
+            access_token: Valid Twitter access token
+            username: Twitter username (without @)
+
+        Returns:
+            User data or None if not found
+        """
+        client = await self.get_client()
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        params = {
+            "user.fields": "id,username,name,description,public_metrics,verified,profile_image_url",
+        }
+
+        response = await client.get(
+            f"{self.TWITTER_API_BASE}/users/by/username/{username}",
+            headers=headers,
+            params=params,
+        )
+
+        if response.status_code == 404:
+            return None
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to get user: {response.text}",
+                status_code=response.status_code,
+            )
+
+        return response.json()
+
+    async def get_user_timeline(
+        self,
+        access_token: str,
+        user_id: str,
+        max_results: int = 10,
+    ) -> list[dict[str, Any]]:
+        """
+        Get recent tweets from a user's timeline.
+
+        Args:
+            access_token: Valid Twitter access token
+            user_id: Twitter user ID
+            max_results: Maximum number of tweets (5-100)
+
+        Returns:
+            List of tweet objects
+        """
+        client = await self.get_client()
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        params = {
+            "max_results": min(max(max_results, 5), 100),
+            "tweet.fields": "created_at,public_metrics,text",
+            "exclude": "retweets,replies",
+        }
+
+        response = await client.get(
+            f"{self.TWITTER_API_BASE}/users/{user_id}/tweets",
+            headers=headers,
+            params=params,
+        )
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("retry-after")
+            raise TwitterRateLimitError(
+                retry_after=int(retry_after) if retry_after else None
+            )
+
+        if response.status_code != 200:
+            raise TwitterAPIError(
+                f"Failed to get user timeline: {response.text}",
+                status_code=response.status_code,
+            )
+
+        data = response.json()
+        return data.get("data", [])

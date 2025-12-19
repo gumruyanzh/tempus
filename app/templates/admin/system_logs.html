@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}System Logs{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">System Logs</h1>
+        <div class="flex space-x-2">
+            <a href="/admin/monitoring" class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900">
+                Back to Monitoring
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="mt-6 bg-white shadow rounded-lg p-4">
+        <form method="get" class="flex flex-wrap gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Level</label>
+                <select name="level" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="">All Levels</option>
+                    {% for l in levels %}
+                    <option value="{{ l }}" {% if level == l %}selected{% endif %}>{{ l | upper }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Category</label>
+                <select name="category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="">All Categories</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c | capitalize }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Time Range</label>
+                <select name="hours" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="1" {% if hours == 1 %}selected{% endif %}>Last hour</option>
+                    <option value="6" {% if hours == 6 %}selected{% endif %}>Last 6 hours</option>
+                    <option value="24" {% if hours == 24 %}selected{% endif %}>Last 24 hours</option>
+                    <option value="72" {% if hours == 72 %}selected{% endif %}>Last 3 days</option>
+                    <option value="168" {% if hours == 168 %}selected{% endif %}>Last 7 days</option>
+                </select>
+            </div>
+            <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-700">Search</label>
+                <input type="text" name="search" value="{{ search or '' }}" placeholder="Search messages..."
+                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+            </div>
+            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm">
+                Filter
+            </button>
+            <a href="/admin/monitoring/logs" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm">
+                Reset
+            </a>
+        </form>
+    </div>
+
+    <!-- Logs List -->
+    <div class="mt-6 bg-white shadow rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Level</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Message</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="logs-body">
+                    {% for log in logs %}
+                    <tr class="hover:bg-gray-50 cursor-pointer log-row" data-log-id="{{ log.id }}">
+                        <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                            {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if log.level.value == 'error' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">ERROR</span>
+                            {% elif log.level.value == 'warning' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">WARN</span>
+                            {% elif log.level.value == 'info' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">INFO</span>
+                            {% elif log.level.value == 'debug' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">DEBUG</span>
+                            {% elif log.level.value == 'critical' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800">CRIT</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            <span class="px-2 py-1 text-xs rounded bg-gray-100">{{ log.category.value }}</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            {% if log.task_name %}
+                            <span class="text-xs" title="{{ log.task_name }}">{{ log.task_name.split('.')[-1] }}</span>
+                            {% else %}
+                            <span class="text-xs" title="{{ log.logger_name }}">{{ log.logger_name.split('.')[-1] }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">
+                            <div class="max-w-md truncate" title="{{ log.message }}">{{ log.message }}</div>
+                            {% if log.exception_type %}
+                            <div class="text-xs text-red-600 truncate mt-1">{{ log.exception_type }}: {{ log.exception_message[:80] }}...</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <!-- Expandable details row -->
+                    <tr class="hidden log-details" id="details-{{ log.id }}">
+                        <td colspan="5" class="px-4 py-4 bg-gray-50">
+                            <div class="space-y-2">
+                                <div><strong>Logger:</strong> {{ log.logger_name }}</div>
+                                {% if log.task_name %}
+                                <div><strong>Task:</strong> {{ log.task_name }}</div>
+                                {% endif %}
+                                {% if log.task_id %}
+                                <div><strong>Task ID:</strong> {{ log.task_id }}</div>
+                                {% endif %}
+                                <div><strong>Message:</strong></div>
+                                <pre class="bg-white p-2 rounded border text-xs overflow-x-auto">{{ log.message }}</pre>
+                                {% if log.details %}
+                                <div><strong>Details:</strong></div>
+                                <pre class="bg-white p-2 rounded border text-xs overflow-x-auto">{{ log.details | tojson(indent=2) }}</pre>
+                                {% endif %}
+                                {% if log.exception_type %}
+                                <div class="text-red-600">
+                                    <strong>Exception:</strong> {{ log.exception_type }}: {{ log.exception_message }}
+                                </div>
+                                {% if log.traceback %}
+                                <pre class="bg-red-50 p-2 rounded border border-red-200 text-xs overflow-x-auto text-red-800">{{ log.traceback }}</pre>
+                                {% endif %}
+                                {% endif %}
+                                {% if log.user_id %}
+                                <div><strong>User ID:</strong> {{ log.user_id }}</div>
+                                {% endif %}
+                                {% if log.strategy_id %}
+                                <div><strong>Strategy ID:</strong> <a href="/admin/monitoring/growth/{{ log.strategy_id }}" class="text-indigo-600 hover:underline">{{ log.strategy_id }}</a></div>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">No logs found matching the criteria</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if logs %}
+        <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+            <div class="text-sm text-gray-500">
+                Showing {{ logs | length }} logs (Page {{ page }})
+            </div>
+            <div class="flex space-x-2">
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}{% if level %}&level={{ level }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if search %}&search={{ search }}{% endif %}&hours={{ hours }}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Previous</a>
+                {% endif %}
+                {% if has_more %}
+                <a href="?page={{ page + 1 }}{% if level %}&level={{ level }}{% endif %}{% if category %}&category={{ category }}{% endif %}{% if search %}&search={{ search }}{% endif %}&hours={{ hours }}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Next</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Toggle log details on click
+document.querySelectorAll('.log-row').forEach(row => {
+    row.addEventListener('click', function() {
+        const logId = this.dataset.logId;
+        const detailsRow = document.getElementById('details-' + logId);
+        if (detailsRow) {
+            detailsRow.classList.toggle('hidden');
+        }
+    });
+});
+
+// Auto-refresh every 10 seconds if viewing recent logs
+{% if hours <= 1 %}
+setTimeout(function() {
+    window.location.reload();
+}, 10000);
+{% endif %}
+</script>
+{% endblock %}

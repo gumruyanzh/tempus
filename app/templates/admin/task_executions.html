@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Task Executions{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">Celery Task Executions</h1>
+        <div class="flex space-x-2">
+            <a href="/admin/monitoring" class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900">
+                Back to Monitoring
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Summary -->
+    <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Total (24h)</div>
+                <div class="mt-1 text-2xl font-semibold text-gray-900">{{ task_stats.total }}</div>
+            </div>
+        </div>
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Success</div>
+                <div class="mt-1 text-2xl font-semibold text-green-600">{{ task_stats.by_status.success }}</div>
+            </div>
+        </div>
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Failed</div>
+                <div class="mt-1 text-2xl font-semibold text-red-600">{{ task_stats.by_status.failure }}</div>
+            </div>
+        </div>
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Running</div>
+                <div class="mt-1 text-2xl font-semibold text-blue-600">{{ task_stats.by_status.started }}</div>
+            </div>
+        </div>
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Avg Duration</div>
+                <div class="mt-1 text-2xl font-semibold text-gray-900">
+                    {% if task_stats.avg_duration_ms %}{{ (task_stats.avg_duration_ms / 1000) | round(2) }}s{% else %}-{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="mt-6 bg-white shadow rounded-lg p-4">
+        <form method="get" class="flex flex-wrap gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Task Name</label>
+                <select name="task_name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="">All Tasks</option>
+                    {% for name in task_names %}
+                    <option value="{{ name }}" {% if task_name == name %}selected{% endif %}>{{ name.split('.')[-1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Status</label>
+                <select name="status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="">All Statuses</option>
+                    <option value="started" {% if status == 'started' %}selected{% endif %}>Running</option>
+                    <option value="success" {% if status == 'success' %}selected{% endif %}>Success</option>
+                    <option value="failure" {% if status == 'failure' %}selected{% endif %}>Failed</option>
+                    <option value="retry" {% if status == 'retry' %}selected{% endif %}>Retry</option>
+                </select>
+            </div>
+            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm">
+                Filter
+            </button>
+            <a href="/admin/monitoring/tasks" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm">
+                Reset
+            </a>
+        </form>
+    </div>
+
+    <!-- Tasks Table -->
+    <div class="mt-6 bg-white shadow rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Completed</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Retries</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for task in executions %}
+                    <tr class="hover:bg-gray-50 cursor-pointer task-row" data-task-id="{{ task.id }}">
+                        <td class="px-4 py-3">
+                            <div class="text-sm font-medium text-gray-900" title="{{ task.task_name }}">
+                                {{ task.task_name.split('.')[-1] }}
+                            </div>
+                            <div class="text-xs text-gray-500 truncate max-w-xs" title="{{ task.task_id }}">
+                                {{ task.task_id[:20] }}...
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if task.status == 'success' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Success</span>
+                            {% elif task.status == 'failure' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Failed</span>
+                            {% elif task.status == 'started' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 animate-pulse">Running</span>
+                            {% elif task.status == 'retry' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Retry</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">
+                            {% if task.duration_ms %}
+                            {{ (task.duration_ms / 1000) | round(2) }}s
+                            {% elif task.status == 'started' %}
+                            <span class="text-blue-600">Running...</span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">
+                            {{ task.started_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">
+                            {% if task.completed_at %}
+                            {{ task.completed_at.strftime('%H:%M:%S') }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">
+                            {% if task.retry_count > 0 %}
+                            <span class="text-yellow-600">{{ task.retry_count }}</span>
+                            {% else %}
+                            0
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <!-- Expandable details row -->
+                    <tr class="hidden task-details" id="task-details-{{ task.id }}">
+                        <td colspan="6" class="px-4 py-4 bg-gray-50">
+                            <div class="space-y-3">
+                                <div>
+                                    <strong>Full Task Name:</strong> {{ task.task_name }}
+                                </div>
+                                <div>
+                                    <strong>Task ID:</strong> {{ task.task_id }}
+                                </div>
+                                {% if task.worker_hostname %}
+                                <div>
+                                    <strong>Worker:</strong> {{ task.worker_hostname }}
+                                </div>
+                                {% endif %}
+                                {% if task.args %}
+                                <div>
+                                    <strong>Arguments:</strong>
+                                    <pre class="bg-white p-2 rounded border text-xs mt-1 overflow-x-auto">{{ task.args | tojson(indent=2) }}</pre>
+                                </div>
+                                {% endif %}
+                                {% if task.kwargs %}
+                                <div>
+                                    <strong>Keyword Arguments:</strong>
+                                    <pre class="bg-white p-2 rounded border text-xs mt-1 overflow-x-auto">{{ task.kwargs | tojson(indent=2) }}</pre>
+                                </div>
+                                {% endif %}
+                                {% if task.result %}
+                                <div>
+                                    <strong>Result:</strong>
+                                    <pre class="bg-green-50 p-2 rounded border border-green-200 text-xs mt-1 overflow-x-auto">{{ task.result | tojson(indent=2) }}</pre>
+                                </div>
+                                {% endif %}
+                                {% if task.error_message %}
+                                <div class="text-red-600">
+                                    <strong>Error:</strong>
+                                    <pre class="bg-red-50 p-2 rounded border border-red-200 text-xs mt-1 overflow-x-auto">{{ task.error_message }}</pre>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-gray-500">No task executions found</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if executions %}
+        <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+            <div class="text-sm text-gray-500">
+                Showing {{ executions | length }} executions (Page {{ page }})
+            </div>
+            <div class="flex space-x-2">
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}{% if task_name %}&task_name={{ task_name }}{% endif %}{% if status %}&status={{ status }}{% endif %}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Previous</a>
+                {% endif %}
+                {% if has_more %}
+                <a href="?page={{ page + 1 }}{% if task_name %}&task_name={{ task_name }}{% endif %}{% if status %}&status={{ status }}{% endif %}"
+                   class="px-3 py-1 border rounded text-sm hover:bg-gray-100">Next</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Toggle task details on click
+document.querySelectorAll('.task-row').forEach(row => {
+    row.addEventListener('click', function() {
+        const taskId = this.dataset.taskId;
+        const detailsRow = document.getElementById('task-details-' + taskId);
+        if (detailsRow) {
+            detailsRow.classList.toggle('hidden');
+        }
+    });
+});
+
+// Auto-refresh every 15 seconds
+setTimeout(function() {
+    window.location.reload();
+}, 15000);
+</script>
+{% endblock %}

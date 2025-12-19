@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Strategy: {{ strategy.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <div>
+            <a href="/admin/monitoring/growth" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Growth Monitoring</a>
+            <h1 class="text-2xl font-semibold text-gray-900 mt-2">{{ strategy.name }}</h1>
+        </div>
+        <div class="flex items-center space-x-2">
+            {% if strategy.status.value == 'active' %}
+            <span class="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">Active</span>
+            {% elif strategy.status.value == 'paused' %}
+            <span class="px-3 py-1 text-sm font-medium rounded-full bg-yellow-100 text-yellow-800">Paused</span>
+            {% else %}
+            <span class="px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-800">{{ strategy.status.value | capitalize }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Strategy Overview -->
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <!-- Progress Card -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Progress</h3>
+            <div class="space-y-4">
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-600">Time Progress</span>
+                        <span class="font-medium">{{ analytics.days_elapsed }} / {{ strategy.duration_days }} days</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        {% set time_progress = (analytics.days_elapsed / strategy.duration_days * 100) | round %}
+                        <div class="bg-indigo-600 h-2 rounded-full" style="width: {{ time_progress }}%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="text-gray-600">Follower Goal</span>
+                        <span class="font-medium">{{ strategy.current_followers }} / {{ strategy.target_followers }}</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        {% set follower_progress = (strategy.current_followers / strategy.target_followers * 100) | round %}
+                        <div class="bg-green-600 h-2 rounded-full" style="width: {{ [follower_progress, 100] | min }}%"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-200">
+                <div class="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                        <div class="text-2xl font-bold text-green-600">+{{ strategy.followers_gained }}</div>
+                        <div class="text-xs text-gray-500">Followers Gained</div>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold text-gray-900">{{ strategy.days_remaining }}</div>
+                        <div class="text-xs text-gray-500">Days Remaining</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Quotas -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Daily Quotas</h3>
+            <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">Follows</span>
+                    <span class="px-3 py-1 text-sm font-medium rounded bg-indigo-100 text-indigo-800">{{ strategy.daily_follows }}/day</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">Likes</span>
+                    <span class="px-3 py-1 text-sm font-medium rounded bg-pink-100 text-pink-800">{{ strategy.daily_likes }}/day</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">Retweets</span>
+                    <span class="px-3 py-1 text-sm font-medium rounded bg-green-100 text-green-800">{{ strategy.daily_retweets }}/day</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">Replies</span>
+                    <span class="px-3 py-1 text-sm font-medium rounded bg-blue-100 text-blue-800">{{ strategy.daily_replies }}/day</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total Actions -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Total Actions</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="text-center p-3 bg-indigo-50 rounded-lg">
+                    <div class="text-2xl font-bold text-indigo-600">{{ strategy.total_follows }}</div>
+                    <div class="text-xs text-gray-600">Follows</div>
+                </div>
+                <div class="text-center p-3 bg-pink-50 rounded-lg">
+                    <div class="text-2xl font-bold text-pink-600">{{ strategy.total_likes }}</div>
+                    <div class="text-xs text-gray-600">Likes</div>
+                </div>
+                <div class="text-center p-3 bg-green-50 rounded-lg">
+                    <div class="text-2xl font-bold text-green-600">{{ strategy.total_retweets }}</div>
+                    <div class="text-xs text-gray-600">Retweets</div>
+                </div>
+                <div class="text-center p-3 bg-blue-50 rounded-lg">
+                    <div class="text-2xl font-bold text-blue-600">{{ strategy.total_replies }}</div>
+                    <div class="text-xs text-gray-600">Replies</div>
+                </div>
+            </div>
+            <div class="mt-4 pt-4 border-t border-gray-200 text-center">
+                <div class="text-3xl font-bold text-gray-900">{{ analytics.total_actions_count }}</div>
+                <div class="text-sm text-gray-500">Total Actions Taken</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Strategy Configuration -->
+    <div class="mt-6 bg-white shadow rounded-lg p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">Strategy Configuration</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div>
+                <div class="text-sm text-gray-500">Niche Keywords</div>
+                <div class="mt-1 flex flex-wrap gap-1">
+                    {% for keyword in strategy.niche_keywords or [] %}
+                    <span class="px-2 py-1 text-xs bg-gray-100 rounded">{{ keyword }}</span>
+                    {% else %}
+                    <span class="text-gray-400">None set</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-500">Target Accounts</div>
+                <div class="mt-1 flex flex-wrap gap-1">
+                    {% for account in strategy.target_accounts or [] %}
+                    <span class="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded">@{{ account }}</span>
+                    {% else %}
+                    <span class="text-gray-400">None set</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-500">Engagement Hours</div>
+                <div class="mt-1 font-medium">{{ strategy.engagement_hours_start }}:00 - {{ strategy.engagement_hours_end }}:00 ({{ strategy.timezone }})</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-500">Start Date</div>
+                <div class="mt-1 font-medium">{{ strategy.start_date.strftime('%Y-%m-%d') if strategy.start_date else '-' }}</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-500">End Date</div>
+                <div class="mt-1 font-medium">{{ strategy.end_date.strftime('%Y-%m-%d') if strategy.end_date else '-' }}</div>
+            </div>
+            <div>
+                <div class="text-sm text-gray-500">Verification Status</div>
+                <div class="mt-1 font-medium">{{ strategy.verification_status.value | capitalize if strategy.verification_status else '-' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Targets -->
+    {% if pending_targets %}
+    <div class="mt-6 bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Pending Targets ({{ pending_targets | length }})</h3>
+        </div>
+        <ul class="divide-y divide-gray-200 max-h-64 overflow-y-auto">
+            {% for target in pending_targets %}
+            <li class="px-4 py-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        {% if target.twitter_username %}
+                        <span class="text-sm font-medium text-gray-900">@{{ target.twitter_username }}</span>
+                        {% elif target.tweet_id %}
+                        <span class="text-sm text-gray-600">Tweet: {{ target.tweet_id[:20] }}...</span>
+                        {% endif %}
+                        <div class="flex space-x-2 mt-1">
+                            {% if target.should_follow %}
+                            <span class="px-2 py-0.5 text-xs bg-indigo-100 text-indigo-800 rounded">Follow</span>
+                            {% endif %}
+                            {% if target.should_like %}
+                            <span class="px-2 py-0.5 text-xs bg-pink-100 text-pink-800 rounded">Like</span>
+                            {% endif %}
+                            {% if target.should_retweet %}
+                            <span class="px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded">Retweet</span>
+                            {% endif %}
+                            {% if target.should_reply %}
+                            <span class="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">Reply</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        Score: {{ (target.relevance_score * 100) | round }}%
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Recent Engagement Logs -->
+    <div class="mt-6 bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Engagement History</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Target</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for log in engagement_logs %}
+                    <tr>
+                        <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                            {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if log.action_type.value == 'follow' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded bg-indigo-100 text-indigo-800">Follow</span>
+                            {% elif log.action_type.value == 'like' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded bg-pink-100 text-pink-800">Like</span>
+                            {% elif log.action_type.value == 'retweet' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-800">Retweet</span>
+                            {% elif log.action_type.value == 'reply' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-800">Reply</span>
+                            {% else %}
+                            <span class="px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-800">{{ log.action_type.value }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-900">
+                            {% if log.twitter_username %}
+                            @{{ log.twitter_username }}
+                            {% elif log.tweet_id %}
+                            Tweet: {{ log.tweet_id[:15] }}...
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if log.success %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Success</span>
+                            {% else %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Failed</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">
+                            {% if log.error_message %}
+                            <span class="text-red-600 text-xs">{{ log.error_message[:50] }}...</span>
+                            {% elif log.reply_content %}
+                            <span class="text-xs truncate block max-w-xs" title="{{ log.reply_content }}">{{ log.reply_content[:50] }}...</span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">No engagement history yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- System Logs for this Strategy -->
+    {% if strategy_logs %}
+    <div class="mt-6 bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">System Logs</h3>
+        </div>
+        <ul class="divide-y divide-gray-200 max-h-64 overflow-y-auto">
+            {% for log in strategy_logs %}
+            <li class="px-4 py-3">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1">
+                        <div class="flex items-center space-x-2">
+                            {% if log.level.value == 'error' %}
+                            <span class="px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-800">ERROR</span>
+                            {% elif log.level.value == 'warning' %}
+                            <span class="px-2 py-0.5 text-xs font-medium rounded bg-yellow-100 text-yellow-800">WARN</span>
+                            {% elif log.level.value == 'info' %}
+                            <span class="px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-800">INFO</span>
+                            {% endif %}
+                            <span class="text-xs text-gray-500">{{ log.logger_name.split('.')[-1] }}</span>
+                        </div>
+                        <p class="mt-1 text-sm text-gray-900">{{ log.message }}</p>
+                        {% if log.exception_message %}
+                        <p class="text-xs text-red-600 mt-1">{{ log.exception_type }}: {{ log.exception_message[:100] }}</p>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs text-gray-500 ml-4 whitespace-nowrap">{{ log.timestamp.strftime('%H:%M:%S') }}</span>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="px-4 py-3 bg-gray-50 text-right">
+            <a href="/admin/monitoring/logs?strategy_id={{ strategy.id }}" class="text-sm text-indigo-600 hover:text-indigo-500">View all logs</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Auto-refresh every 30 seconds
+setTimeout(function() {
+    window.location.reload();
+}, 30000);
+</script>
+{% endblock %}

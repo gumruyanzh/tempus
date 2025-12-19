@@ -56,9 +56,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./app:/app/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
     networks:
       - tempus_network
 
@@ -79,8 +77,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./app:/app/app
     command: celery -A celery_worker.celery_app worker --loglevel=info
     networks:
       - tempus_network
@@ -102,8 +98,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./app:/app/app
     command: celery -A celery_worker.celery_app beat --loglevel=info
     networks:
       - tempus_network

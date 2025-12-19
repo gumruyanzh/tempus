@@ -60,6 +60,7 @@ class ActionType(str, enum.Enum):
     UNRETWEET = "unretweet"
     REPLY = "reply"
     QUOTE_TWEET = "quote_tweet"
+    POST = "post"  # Original tweets/posts
 
 
 class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
@@ -164,6 +165,11 @@ class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         default=20,
         nullable=False,
     )
+    daily_posts: Mapped[int] = mapped_column(
+        Integer,
+        default=5,
+        nullable=False,
+    )
 
     # Strategy parameters
     niche_keywords: Mapped[Optional[List[str]]] = mapped_column(
@@ -230,6 +236,11 @@ class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         default=0,
         nullable=False,
     )
+    total_posts: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
     followers_gained: Mapped[int] = mapped_column(
         Integer,
         default=0,
@@ -246,6 +257,12 @@ class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         Boolean,
         default=False,
         nullable=False,
+    )
+
+    # Custom AI prompt for generating content
+    custom_prompt: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
     )
 
     # Relationships
@@ -303,6 +320,7 @@ class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
             + self.total_likes
             + self.total_retweets
             + self.total_replies
+            + self.total_posts
         )
 
     @property
@@ -355,6 +373,10 @@ class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     def increment_replies(self) -> None:
         """Increment the reply count."""
         self.total_replies += 1
+
+    def increment_posts(self) -> None:
+        """Increment the post count."""
+        self.total_posts += 1
 
     def update_followers(self, new_count: int) -> None:
         """Update current follower count and calculate gained."""
@@ -625,6 +647,11 @@ class DailyProgress(Base, UUIDMixin):
         default=0,
         nullable=False,
     )
+    posts_done: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
 
     # Metrics snapshot
     follower_count: Mapped[int] = mapped_column(
@@ -663,6 +690,7 @@ class DailyProgress(Base, UUIDMixin):
             + self.likes_done
             + self.retweets_done
             + self.replies_done
+            + self.posts_done
         )
 
 

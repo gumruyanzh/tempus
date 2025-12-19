@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}System Monitoring{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-semibold text-gray-900">System Monitoring</h1>
+        <div class="flex space-x-2">
+            <a href="/admin" class="px-3 py-2 text-sm text-gray-600 hover:text-gray-900">
+                Back to Admin
+            </a>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+        <!-- Logs Stats -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Errors (24h)</div>
+                <div class="mt-1 text-2xl font-semibold {% if log_stats.by_level.error > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                    {{ log_stats.by_level.error }}
+                </div>
+            </div>
+        </div>
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Warnings (24h)</div>
+                <div class="mt-1 text-2xl font-semibold {% if log_stats.by_level.warning > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}">
+                    {{ log_stats.by_level.warning }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Stats -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Tasks (24h)</div>
+                <div class="mt-1 text-2xl font-semibold text-gray-900">{{ task_stats.total }}</div>
+            </div>
+        </div>
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Success Rate</div>
+                <div class="mt-1 text-2xl font-semibold {% if task_stats.success_rate >= 95 %}text-green-600{% elif task_stats.success_rate >= 80 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                    {{ task_stats.success_rate }}%
+                </div>
+            </div>
+        </div>
+
+        <!-- Growth Stats -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Active Strategies</div>
+                <div class="mt-1 text-2xl font-semibold text-indigo-600">{{ active_strategies }}</div>
+            </div>
+        </div>
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-4">
+                <div class="text-sm font-medium text-gray-500">Active Campaigns</div>
+                <div class="mt-1 text-2xl font-semibold text-blue-600">{{ active_campaigns }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <a href="/admin/monitoring/logs" class="bg-white p-4 shadow rounded-lg hover:bg-gray-50 border-l-4 border-gray-400">
+            <h3 class="text-lg font-medium text-gray-900">System Logs</h3>
+            <p class="text-sm text-gray-500">View detailed application logs</p>
+        </a>
+        <a href="/admin/monitoring/tasks" class="bg-white p-4 shadow rounded-lg hover:bg-gray-50 border-l-4 border-blue-400">
+            <h3 class="text-lg font-medium text-gray-900">Task Executions</h3>
+            <p class="text-sm text-gray-500">Monitor Celery task history</p>
+        </a>
+        <a href="/admin/monitoring/growth" class="bg-white p-4 shadow rounded-lg hover:bg-gray-50 border-l-4 border-indigo-400">
+            <h3 class="text-lg font-medium text-gray-900">Growth Strategies</h3>
+            <p class="text-sm text-gray-500">Monitor strategy progress</p>
+        </a>
+        <a href="/admin/audit-logs" class="bg-white p-4 shadow rounded-lg hover:bg-gray-50 border-l-4 border-green-400">
+            <h3 class="text-lg font-medium text-gray-900">Audit Logs</h3>
+            <p class="text-sm text-gray-500">User activity history</p>
+        </a>
+    </div>
+
+    <!-- Log Categories Breakdown -->
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Logs by Category (24h)</h2>
+            </div>
+            <div class="p-4">
+                <div class="space-y-3">
+                    {% for category, count in log_stats.by_category.items() %}
+                    {% if count > 0 %}
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600 capitalize">{{ category }}</span>
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">{{ count }}</span>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h2 class="text-lg font-medium text-gray-900">Tasks by Name (24h)</h2>
+            </div>
+            <div class="p-4">
+                <div class="space-y-3">
+                    {% for task_name, count in task_stats.by_task.items() %}
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600 truncate" title="{{ task_name }}">{{ task_name.split('.')[-1] }}</span>
+                        <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if not task_stats.by_task %}
+                    <p class="text-sm text-gray-500">No tasks executed in the last 24 hours</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Issues -->
+    {% if recent_issues %}
+    <div class="mt-6 bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200 bg-red-50">
+            <h2 class="text-lg font-medium text-red-800">Recent Errors</h2>
+        </div>
+        <ul class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+            {% for log in recent_issues %}
+            <li class="px-4 py-3">
+                <div class="flex items-start justify-between">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-800">{{ log.level.value }}</span>
+                            <span class="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{{ log.category.value }}</span>
+                            {% if log.task_name %}
+                            <span class="text-xs text-gray-500">{{ log.task_name.split('.')[-1] }}</span>
+                            {% endif %}
+                        </div>
+                        <p class="mt-1 text-sm text-gray-900 truncate">{{ log.message }}</p>
+                        {% if log.exception_type %}
+                        <p class="text-xs text-red-600">{{ log.exception_type }}: {{ log.exception_message[:100] }}...</p>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs text-gray-500 whitespace-nowrap ml-4">{{ log.timestamp.strftime('%H:%M:%S') }}</span>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="px-4 py-3 bg-gray-50 text-right">
+            <a href="/admin/monitoring/logs?level=error" class="text-sm text-red-600 hover:text-red-500">View all errors</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Recent Task Executions -->
+    <div class="mt-6 bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Recent Task Executions</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Started</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for task in recent_tasks %}
+                    <tr>
+                        <td class="px-4 py-3 text-sm text-gray-900">
+                            <span title="{{ task.task_name }}">{{ task.task_name.split('.')[-1] }}</span>
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if task.status == 'success' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Success</span>
+                            {% elif task.status == 'failure' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">Failed</span>
+                            {% elif task.status == 'started' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">Running</span>
+                            {% elif task.status == 'retry' %}
+                            <span class="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Retry</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">
+                            {% if task.duration_ms %}{{ (task.duration_ms / 1000) | round(2) }}s{% else %}-{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">
+                            {{ task.started_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="px-4 py-8 text-center text-gray-500">No recent tasks</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="px-4 py-3 bg-gray-50 text-right">
+            <a href="/admin/monitoring/tasks" class="text-sm text-indigo-600 hover:text-indigo-500">View all tasks</a>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-refresh every 30 seconds
+setTimeout(function() {
+    window.location.reload();
+}, 30000);
+</script>
+{% endblock %}

@@ -254,6 +254,12 @@ async def twitter_signin(
     twitter_service = TwitterService(db)
     auth_url, state_verifier = twitter_service.get_authorization_url()
 
+    logger.info(
+        "Twitter OAuth signin initiated",
+        auth_url=auth_url[:100] + "...",
+        redirect_uri=settings.twitter_redirect_uri,
+    )
+
     # Store state and verifier in cookie with auth mode
     response = RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     response.set_cookie(
@@ -263,6 +269,7 @@ async def twitter_signin(
         secure=settings.is_production,
         samesite="lax",
         max_age=600,  # 10 minutes
+        path="/",  # Explicit path for cookie
     )
 
     return response
@@ -287,23 +294,65 @@ async def twitter_connect(
         secure=settings.is_production,
         samesite="lax",
         max_age=600,  # 10 minutes
+        path="/",  # Explicit path for cookie
     )
 
     return response
 
 
+@router.get("/twitter/callback/test")
+async def twitter_callback_test(request: Request):
+    """Test endpoint to verify callback URL is reachable."""
+    return {"status": "ok", "message": "Callback URL is reachable", "url": str(request.url)}
+
+
 @router.get("/twitter/callback")
 async def twitter_callback(
     request: Request,
-    code: str,
-    state: str,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Handle Twitter OAuth callback for both sign-in and connect flows."""
+    # Log ALL query parameters for debugging
+    logger.info(
+        "Twitter OAuth callback received",
+        full_url=str(request.url),
+        query_params=dict(request.query_params),
+        has_code=bool(code),
+        has_state=bool(state),
+        error=error,
+        error_description=error_description,
+        cookies=list(request.cookies.keys()),
+    )
+
+    # Handle OAuth errors from Twitter
+    if error:
+        logger.warning(
+            "Twitter OAuth error",
+            error=error,
+            error_description=error_description,
+        )
+        return RedirectResponse(
+            url=f"/login?error=Twitter+authorization+failed:+{error}",
+            status_code=status.HTTP_302_FOUND,
+        )
+
+    # Validate required parameters
+    if not code or not state:
+        logger.warning("Twitter OAuth callback missing code or state")
+        return RedirectResponse(
+            url="/login?error=Invalid+OAuth+response",
+            status_code=status.HTTP_302_FOUND,
+        )
+
     # Get stored state and verifier
     stored_cookie = request.cookies.get("twitter_oauth_state")
 
     if not stored_cookie:
+        logger.warning("Twitter OAuth callback: No state cookie found")
         return RedirectResponse(
             url="/login?error=OAuth+state+expired",
             status_code=status.HTTP_302_FOUND,

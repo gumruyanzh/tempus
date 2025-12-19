@@ -119,6 +119,10 @@ async def preview_strategy(
     prompt: Annotated[str, Form()],
     verification_status: Annotated[str, Form()],
     current_followers: Annotated[int, Form()] = 0,
+    custom_prompt: Annotated[Optional[str], Form()] = None,
+    all_day: Annotated[Optional[str], Form()] = None,
+    engagement_hours_start: Annotated[int, Form()] = 9,
+    engagement_hours_end: Annotated[int, Form()] = 21,
     db: AsyncSession = Depends(get_db),
 ):
     """Parse strategy prompt and show preview with estimates."""
@@ -129,7 +133,7 @@ async def preview_strategy(
 
     if not deepseek_key:
         return RedirectResponse(
-            url="/growth/new?error=Please+configure+your+DeepSeek+API+key+first",
+            url="/growth/new?error=Please+add+your+DeepSeek+API+key+in+Settings",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -142,6 +146,14 @@ async def preview_strategy(
         # Parse the prompt
         config = await growth_service.parse_strategy_prompt(prompt, deepseek_key)
 
+        # Override engagement hours based on user selection
+        if all_day == "1":
+            config.engagement_hours_start = 0
+            config.engagement_hours_end = 24
+        else:
+            config.engagement_hours_start = engagement_hours_start
+            config.engagement_hours_end = engagement_hours_end
+
         # Create a temporary strategy for estimation (not saved)
         temp_strategy = await growth_service.create_strategy(
             user_id=user.id,
@@ -150,6 +162,10 @@ async def preview_strategy(
             verification_status=verification,
             starting_followers=current_followers,
         )
+
+        # Set custom prompt if provided
+        if custom_prompt and custom_prompt.strip():
+            temp_strategy.custom_prompt = custom_prompt.strip()
 
         # Generate estimates
         estimates = await growth_service.estimate_results(temp_strategy)
@@ -176,6 +192,7 @@ async def preview_strategy(
                     "daily_likes": config.daily_likes,
                     "daily_retweets": config.daily_retweets,
                     "daily_replies": config.daily_replies,
+                    "daily_posts": config.daily_posts,
                 },
                 "estimates": estimates,
                 "plan": plan,
@@ -661,5 +678,39 @@ async def approve_reply(
 
     return RedirectResponse(
         url=f"/growth/{strategy_id}/targets?success=Reply+approved",
+        status_code=status.HTTP_302_FOUND,
+    )
+
+
+@router.post("/{strategy_id}/custom-prompt")
+async def update_custom_prompt(
+    request: Request,
+    strategy_id: UUID,
+    custom_prompt: Annotated[str, Form()],
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update custom AI prompt for a strategy."""
+    growth_service = GrowthStrategyService(db)
+    strategy = await growth_service.get_strategy(strategy_id, user.id)
+
+    if not strategy:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Strategy not found",
+        )
+
+    # Update the custom prompt
+    strategy.custom_prompt = custom_prompt.strip() if custom_prompt else None
+    await db.commit()
+
+    logger.info(
+        "Custom prompt updated",
+        strategy_id=str(strategy_id),
+        user_id=str(user.id),
+    )
+
+    return RedirectResponse(
+        url=f"/growth/{strategy_id}?success=Custom+prompt+saved",
         status_code=status.HTTP_302_FOUND,
     )

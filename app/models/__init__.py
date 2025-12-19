@@ -15,6 +15,12 @@ from app.models.growth_strategy import (
     VerificationStatus,
 )
 from app.models.oauth import OAuthAccount
+from app.models.system_log import (
+    LogCategory,
+    LogLevel,
+    SystemLog,
+    TaskExecution,
+)
 from app.models.tweet import ScheduledTweet, TweetDraft, TweetExecutionLog
 from app.models.user import EncryptedAPIKey, User
 
@@ -39,4 +45,9 @@ __all__ = [
     "ActionType",
     "DailyProgress",
     "RateLimitTracker",
+    # System Logging models
+    "SystemLog",
+    "TaskExecution",
+    "LogLevel",
+    "LogCategory",
 ]

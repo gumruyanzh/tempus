@@ -43,6 +43,7 @@ class StrategyConfig:
     daily_likes: int
     daily_retweets: int
     daily_replies: int
+    daily_posts: int
     engagement_hours_start: int
     engagement_hours_end: int
     timezone: str
@@ -84,6 +85,7 @@ Extract the following:
 - daily_likes: Recommended daily likes (100-400 based on aggressiveness)
 - daily_retweets: Recommended daily retweets (5-20)
 - daily_replies: Recommended daily replies (10-30)
+- daily_posts: Recommended daily original posts/tweets (3-10, this is separate from replies)
 - name: Short name for the strategy (max 50 chars)
 
 Consider the user's goals and adjust quotas accordingly:
@@ -122,6 +124,7 @@ Output JSON:"""
                     daily_likes=min(data.get("daily_likes", 200), 1000),
                     daily_retweets=min(data.get("daily_retweets", 10), 50),
                     daily_replies=min(data.get("daily_replies", 20), 50),
+                    daily_posts=min(data.get("daily_posts", 5), 20),
                     engagement_hours_start=9,
                     engagement_hours_end=21,
                     timezone="UTC",
@@ -139,6 +142,7 @@ Output JSON:"""
                     daily_likes=200,
                     daily_retweets=10,
                     daily_replies=20,
+                    daily_posts=5,
                     engagement_hours_start=9,
                     engagement_hours_end=21,
                     timezone="UTC",
@@ -190,6 +194,7 @@ Output JSON:"""
             daily_likes=config.daily_likes,
             daily_retweets=config.daily_retweets,
             daily_replies=config.daily_replies,
+            daily_posts=config.daily_posts,
             niche_keywords=config.niche_keywords,
             target_accounts=config.target_accounts,
             engagement_hours_start=config.engagement_hours_start,
@@ -299,6 +304,7 @@ Strategy Parameters:
   - Likes: {strategy.daily_likes}
   - Retweets: {strategy.daily_retweets}
   - Replies: {strategy.daily_replies}
+  - Original posts: {strategy.daily_posts}
 
 User's original request: "{strategy.original_prompt}"
 
@@ -676,10 +682,51 @@ Generate a comprehensive plan. Output ONLY valid JSON."""
         Returns:
             Generated reply text
         """
+        from app.models.user import User
+
         deepseek = DeepSeekService(api_key)
 
         try:
-            system_prompt = """You are a thoughtful Twitter user engaging authentically with content in your niche.
+            # Fetch user's default prompt template
+            user_stmt = select(User).where(User.id == strategy.user_id)
+            user_result = await self.db.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+            user_default_prompt = user.default_prompt_template if user else None
+
+            # Build system prompt - prioritize user's default prompt if set
+            if user_default_prompt:
+                # Use user's default prompt as the base
+                base_system = user_default_prompt
+
+                # Add strategy-specific instructions if available
+                if strategy.custom_prompt:
+                    system_prompt = f"""{base_system}
+
+ADDITIONAL STRATEGY-SPECIFIC INSTRUCTIONS:
+{strategy.custom_prompt}"""
+                else:
+                    system_prompt = base_system
+            elif strategy.custom_prompt:
+                # No user default, but has strategy custom prompt
+                base_system = """You are a thoughtful Twitter user engaging authentically with content in your niche.
+
+Write a reply that:
+1. Adds value to the conversation
+2. Shows genuine interest
+3. Doesn't sound like a bot or generic comment
+4. Is under 280 characters
+5. Avoids generic phrases like "Great post!" or "Thanks for sharing!"
+6. Either asks a thoughtful question, shares a relevant insight, or adds a personal perspective
+
+Be conversational and human."""
+
+                system_prompt = f"""{base_system}
+
+IMPORTANT - Follow these specific instructions from the user:
+{strategy.custom_prompt}"""
+            else:
+                # No custom prompts at all, use default
+                system_prompt = """You are a thoughtful Twitter user engaging authentically with content in your niche.
 
 Write a reply that:
 1. Adds value to the conversation
@@ -885,6 +932,7 @@ Output ONLY the reply text, nothing else."""
             likes_done=actions.get(ActionType.LIKE, 0),
             retweets_done=actions.get(ActionType.RETWEET, 0),
             replies_done=actions.get(ActionType.REPLY, 0),
+            posts_done=actions.get(ActionType.POST, 0),
             follower_count=strategy.current_followers,
             following_count=0,  # Would need to fetch from Twitter
             engagement_rate=strategy.target_engagement_rate,
@@ -920,6 +968,7 @@ Output ONLY the reply text, nothing else."""
             "likes": strategy.total_likes,
             "retweets": strategy.total_retweets,
             "replies": strategy.total_replies,
+            "posts": strategy.total_posts,
         }
 
         # Calculate growth rate
@@ -1003,6 +1052,8 @@ Output ONLY the reply text, nothing else."""
                     strategy.increment_retweets()
                 elif action_type == ActionType.REPLY:
                     strategy.increment_replies()
+                elif action_type == ActionType.POST:
+                    strategy.increment_posts()
 
                 await self.db.flush()
 

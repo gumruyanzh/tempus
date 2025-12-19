@@ -133,7 +133,7 @@
     </div>
 
     <!-- Engagement Stats -->
-    <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
         <div class="bg-white shadow rounded-lg p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0 p-2 bg-blue-100 rounded-lg">
@@ -183,6 +183,19 @@
                 <div class="ml-4">
                     <p class="text-sm text-gray-500">Replies</p>
                     <p class="text-xl font-semibold text-gray-900">{{ strategy.total_replies }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white shadow rounded-lg p-4">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 p-2 bg-orange-100 rounded-lg">
+                    <svg class="h-6 w-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm text-gray-500">Posts</p>
+                    <p class="text-xl font-semibold text-gray-900">{{ strategy.total_posts }}</p>
                 </div>
             </div>
         </div>
@@ -282,8 +295,18 @@
                     <dd class="text-sm text-gray-900">{{ strategy.daily_replies }}</dd>
                 </div>
                 <div>
+                    <dt class="text-sm text-gray-500">Daily Posts</dt>
+                    <dd class="text-sm text-gray-900">{{ strategy.daily_posts }}</dd>
+                </div>
+                <div>
                     <dt class="text-sm text-gray-500">Active Hours</dt>
-                    <dd class="text-sm text-gray-900">{{ '%02d:00'|format(strategy.engagement_hours_start) }} - {{ '%02d:00'|format(strategy.engagement_hours_end) }} ({{ strategy.timezone }})</dd>
+                    <dd class="text-sm text-gray-900">
+                        {% if strategy.engagement_hours_start == 0 and strategy.engagement_hours_end == 24 %}
+                        24/7
+                        {% else %}
+                        {{ '%02d:00'|format(strategy.engagement_hours_start) }} - {{ '%02d:00'|format(strategy.engagement_hours_end) }} ({{ strategy.timezone }})
+                        {% endif %}
+                    </dd>
                 </div>
                 <div>
                     <dt class="text-sm text-gray-500">Start Date</dt>
@@ -324,6 +347,39 @@
                 </dd>
             </div>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- Custom AI Prompt -->
+    <div class="mt-6 bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+            <h2 class="text-lg font-medium text-gray-900">Custom AI Prompt</h2>
+            <p class="mt-1 text-sm text-gray-500">Customize how AI generates replies and posts for this strategy</p>
+        </div>
+        <div class="px-4 py-5 sm:p-6">
+            <form action="/growth/{{ strategy.id }}/custom-prompt" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div>
+                    <label for="custom_prompt" class="block text-sm font-medium text-gray-700 mb-2">
+                        Instructions for AI-generated content
+                    </label>
+                    <textarea
+                        id="custom_prompt"
+                        name="custom_prompt"
+                        rows="4"
+                        class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm p-3"
+                        placeholder="Example: Always be friendly and use emojis. Focus on providing value. Mention my product when relevant. Use a casual tone like talking to a friend."
+                    >{{ strategy.custom_prompt or '' }}</textarea>
+                    <p class="mt-2 text-xs text-gray-500">
+                        This prompt will be used when generating AI replies and posts. Be specific about tone, style, and any topics to focus on or avoid.
+                    </p>
+                </div>
+                <div class="mt-4">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Save Prompt
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 

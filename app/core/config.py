@@ -52,6 +52,7 @@ class Settings(BaseSettings):
 
     # DeepSeek API
     deepseek_api_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_api_key: str = ""  # System-wide fallback key
 
     # Rate Limiting
     rate_limit_requests: int = 100

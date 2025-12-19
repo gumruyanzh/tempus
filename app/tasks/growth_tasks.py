@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.core.database import get_celery_db_context
 from app.core.logging import get_logger
+from app.models.system_log import LogCategory, LogLevel
 from app.models.growth_strategy import (
     ActionType,
     EngagementStatus,
@@ -21,10 +22,39 @@ from app.models.growth_strategy import (
 from app.models.user import APIKeyType
 from app.services.growth_strategy import GrowthStrategyService
 from app.services.rate_limiter import EngagementRateLimiter, RateLimitError
+from app.services.system_logging import SystemLoggingService
 from app.services.twitter import TwitterAPIError, TwitterRateLimitError, TwitterService
 from app.services.user import UserService
 
 logger = get_logger(__name__)
+
+
+async def log_to_db(
+    db,
+    level: LogLevel,
+    message: str,
+    strategy_id: UUID = None,
+    task_name: str = None,
+    task_id: str = None,
+    exception: Exception = None,
+    details: dict = None,
+):
+    """Helper to log to database within Celery tasks."""
+    try:
+        log_service = SystemLoggingService(db)
+        await log_service.log(
+            level=level,
+            message=message,
+            category=LogCategory.GROWTH,
+            logger_name="app.tasks.growth_tasks",
+            task_name=task_name,
+            task_id=task_id,
+            strategy_id=strategy_id,
+            details=details,
+            exception=exception,
+        )
+    except Exception:
+        pass  # Don't fail task if logging fails
 
 
 def run_async(coro):
@@ -59,6 +89,12 @@ async def _process_growth_strategies_async() -> dict:
             logger.debug("No active growth strategies")
             return {"processed": 0}
 
+        await log_to_db(
+            db, LogLevel.INFO,
+            f"Processing {len(active_strategies)} active growth strategies",
+            task_name="process_growth_strategies",
+        )
+
         processed = 0
         for strategy in active_strategies:
             try:
@@ -66,6 +102,13 @@ async def _process_growth_strategies_async() -> dict:
                 if strategy.is_complete:
                     strategy.mark_completed()
                     await db.commit()
+                    await log_to_db(
+                        db, LogLevel.INFO,
+                        f"Growth strategy '{strategy.name}' completed",
+                        strategy_id=strategy.id,
+                        task_name="process_growth_strategies",
+                        details={"followers_gained": strategy.followers_gained},
+                    )
                     logger.info(
                         "Growth strategy completed",
                         strategy_id=str(strategy.id),
@@ -77,6 +120,13 @@ async def _process_growth_strategies_async() -> dict:
                 processed += 1
 
             except Exception as e:
+                await log_to_db(
+                    db, LogLevel.ERROR,
+                    f"Error processing strategy '{strategy.name}'",
+                    strategy_id=strategy.id,
+                    task_name="process_growth_strategies",
+                    exception=e,
+                )
                 logger.error(
                     "Error processing growth strategy",
                     strategy_id=str(strategy.id),
@@ -178,6 +228,14 @@ async def _execute_strategy_engagements_async(task, strategy_id: str) -> dict:
 
             await db.commit()
 
+            await log_to_db(
+                db, LogLevel.INFO,
+                f"Executed {executed} engagements for strategy",
+                strategy_id=UUID(strategy_id),
+                task_name="execute_strategy_engagements",
+                details={"executed": executed},
+            )
+
             logger.info(
                 "Strategy engagements executed",
                 strategy_id=strategy_id,
@@ -187,6 +245,13 @@ async def _execute_strategy_engagements_async(task, strategy_id: str) -> dict:
             return {"success": True, "executed": executed}
 
         except Exception as e:
+            await log_to_db(
+                db, LogLevel.ERROR,
+                f"Error executing strategy engagements",
+                strategy_id=UUID(strategy_id),
+                task_name="execute_strategy_engagements",
+                exception=e,
+            )
             logger.exception(
                 "Unexpected error executing strategy engagements",
                 strategy_id=strategy_id,

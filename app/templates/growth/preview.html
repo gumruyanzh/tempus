@@ -97,6 +97,11 @@
                                 <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ config.daily_replies }}</td>
                                 <td class="px-4 py-3 text-sm text-gray-500">100/day (shared)</td>
                             </tr>
+                            <tr>
+                                <td class="px-4 py-3 text-sm text-gray-900">Posts</td>
+                                <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ config.daily_posts }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-500">100/day (shared)</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -182,7 +187,7 @@
             <!-- Timeline -->
             <div class="mb-6">
                 <h3 class="text-lg font-medium text-gray-900 mb-4">Timeline</h3>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-3 gap-4">
                     <div class="bg-gray-50 rounded-lg p-4">
                         <p class="text-sm text-gray-500">Start Date</p>
                         <p class="text-lg font-medium text-gray-900">{{ strategy.start_date.strftime('%Y-%m-%d') }}</p>
@@ -190,6 +195,16 @@
                     <div class="bg-gray-50 rounded-lg p-4">
                         <p class="text-sm text-gray-500">End Date</p>
                         <p class="text-lg font-medium text-gray-900">{{ strategy.end_date.strftime('%Y-%m-%d') }}</p>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <p class="text-sm text-gray-500">Active Hours (UTC)</p>
+                        <p class="text-lg font-medium text-gray-900">
+                            {% if strategy.engagement_hours_start == 0 and strategy.engagement_hours_end == 24 %}
+                            24/7
+                            {% else %}
+                            {{ "%02d:00"|format(strategy.engagement_hours_start) }} - {{ "%02d:00"|format(strategy.engagement_hours_end) }}
+                            {% endif %}
+                        </p>
                     </div>
                 </div>
             </div>

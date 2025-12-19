@@ -3,7 +3,7 @@
 from app.tasks.celery_app import celery_app
 
 # Import tasks to register them
-from app.tasks import campaign_tasks, maintenance_tasks, tweet_tasks  # noqa: F401
+from app.tasks import campaign_tasks, growth_tasks, maintenance_tasks, tweet_tasks  # noqa: F401
 
 if __name__ == "__main__":
     celery_app.start()

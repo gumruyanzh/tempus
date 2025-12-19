@@ -932,11 +932,15 @@ Output ONLY the reply text, nothing else."""
         else:
             daily_growth = 0
 
+        # Calculate days elapsed
+        days_elapsed = strategy.duration_days - strategy.days_remaining
+
         return {
             "strategy_id": str(strategy_id),
             "status": strategy.status.value,
             "duration_days": strategy.duration_days,
             "days_remaining": strategy.days_remaining,
+            "days_elapsed": days_elapsed,
             "progress_percentage": strategy.progress_percentage,
             "starting_followers": strategy.starting_followers,
             "current_followers": strategy.current_followers,
@@ -945,6 +949,7 @@ Output ONLY the reply text, nothing else."""
             "daily_growth": round(daily_growth, 2),
             "total_engagements": strategy.total_engagements,
             "total_actions": total_actions,
+            "total_actions_count": sum(total_actions.values()),
             "estimated_results": strategy.estimated_results,
             "daily_progress": [
                 {

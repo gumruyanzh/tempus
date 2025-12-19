@@ -46,7 +46,21 @@
                     <p class="mt-2 text-gray-600">{{ strategy.original_prompt }}</p>
                 </div>
                 <div class="flex space-x-2">
-                    {% if strategy.status.value == 'active' %}
+                    {% if strategy.status.value == 'draft' %}
+                    <form action="/growth/create" method="post" class="inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="strategy_id" value="{{ strategy.id }}">
+                        <button type="submit" class="px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                            Activate Strategy
+                        </button>
+                    </form>
+                    <form action="/growth/{{ strategy.id }}/delete" method="post" class="inline" onsubmit="return confirm('Are you sure you want to delete this draft strategy?')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="px-3 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100">
+                            Delete
+                        </button>
+                    </form>
+                    {% elif strategy.status.value == 'active' %}
                     <form action="/growth/{{ strategy.id }}/pause" method="post" class="inline">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button type="submit" class="px-3 py-2 border border-yellow-300 rounded-md text-sm font-medium text-yellow-700 bg-yellow-50 hover:bg-yellow-100">
@@ -314,7 +328,7 @@
     </div>
 
     <!-- Delete Strategy -->
-    {% if strategy.status.value in ['completed', 'cancelled'] %}
+    {% if strategy.status.value in ['draft', 'completed', 'cancelled'] %}
     <div class="mt-6 bg-white shadow rounded-lg p-6">
         <h3 class="text-lg font-medium text-red-600 mb-2">Danger Zone</h3>
         <p class="text-sm text-gray-500 mb-4">Once you delete a strategy, there is no going back. Please be certain.</p>

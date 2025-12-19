@@ -421,3 +421,82 @@ class TestTwitterAPIErrors:
 
         error = TwitterRateLimitError()
         assert error.retry_after is None
+
+
+class TestTwitterSearch:
+    """Tests for Twitter search and trends functionality."""
+
+    @pytest.mark.asyncio
+    async def test_search_recent_tweets_method_exists(self, db_session: AsyncSession):
+        """Test search_recent_tweets method exists."""
+        service = TwitterService(db_session)
+        assert hasattr(service, 'search_recent_tweets')
+
+    @pytest.mark.asyncio
+    async def test_get_trending_topics_method_exists(self, db_session: AsyncSession):
+        """Test get_trending_topics method exists."""
+        service = TwitterService(db_session)
+        assert hasattr(service, 'get_trending_topics')
+
+    @pytest.mark.asyncio
+    async def test_get_popular_tweets_about_topic_method_exists(self, db_session: AsyncSession):
+        """Test get_popular_tweets_about_topic method exists."""
+        service = TwitterService(db_session)
+        assert hasattr(service, 'get_popular_tweets_about_topic')
+
+    def test_format_twitter_context_for_prompt_empty(self, db_session: AsyncSession):
+        """Test formatting empty Twitter context."""
+        service = TwitterService(db_session)
+
+        result = service.format_twitter_context_for_prompt(tweets=[], trends=None)
+        assert result == ""
+
+    def test_format_twitter_context_for_prompt_with_tweets(self, db_session: AsyncSession):
+        """Test formatting Twitter context with tweets."""
+        service = TwitterService(db_session)
+
+        tweets = [
+            {
+                "author_username": "testuser",
+                "text": "This is a test tweet about AI",
+                "metrics": {"like_count": 100, "retweet_count": 50},
+            }
+        ]
+
+        result = service.format_twitter_context_for_prompt(tweets=tweets, trends=None)
+        assert "@testuser" in result
+        assert "100 likes" in result
+        assert "50 RTs" in result
+
+    def test_format_twitter_context_for_prompt_with_trends(self, db_session: AsyncSession):
+        """Test formatting Twitter context with trends."""
+        service = TwitterService(db_session)
+
+        trends = [
+            {"name": "#AITrend"},
+            {"name": "#MachineLearning"},
+        ]
+
+        result = service.format_twitter_context_for_prompt(tweets=[], trends=trends)
+        assert "#AITrend" in result
+        assert "#MachineLearning" in result
+        assert "trending" in result.lower()
+
+    def test_format_twitter_context_for_prompt_combined(self, db_session: AsyncSession):
+        """Test formatting Twitter context with both tweets and trends."""
+        service = TwitterService(db_session)
+
+        tweets = [
+            {
+                "author_username": "aiexpert",
+                "text": "Hot take on AI development",
+                "metrics": {"like_count": 500, "retweet_count": 200},
+            }
+        ]
+        trends = [
+            {"name": "#TechNews"},
+        ]
+
+        result = service.format_twitter_context_for_prompt(tweets=tweets, trends=trends)
+        assert "@aiexpert" in result
+        assert "#TechNews" in result

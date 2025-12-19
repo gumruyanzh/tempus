@@ -524,3 +524,243 @@ class TwitterService:
         user.update_last_login()
 
         return user, True
+
+    # Twitter Search and Trends
+
+    async def search_recent_tweets(
+        self,
+        access_token: str,
+        query: str,
+        max_results: int = 10,
+        sort_order: str = "relevancy",
+    ) -> list[dict[str, Any]]:
+        """
+        Search for recent tweets matching a query.
+
+        Args:
+            access_token: Valid Twitter access token
+            query: Search query (supports Twitter search operators)
+            max_results: Maximum number of results (10-100)
+            sort_order: "recency" or "relevancy"
+
+        Returns:
+            List of tweet objects with text, metrics, and author info
+        """
+        client = await self.get_client()
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        # Build search query - exclude retweets and replies for cleaner results
+        search_query = f"{query} -is:retweet -is:reply lang:en"
+
+        params = {
+            "query": search_query,
+            "max_results": min(max(max_results, 10), 100),  # API limits: 10-100
+            "sort_order": sort_order,
+            "tweet.fields": "created_at,public_metrics,author_id,text",
+            "expansions": "author_id",
+            "user.fields": "username,name,verified",
+        }
+
+        try:
+            response = await client.get(
+                f"{self.TWITTER_API_BASE}/tweets/search/recent",
+                headers=headers,
+                params=params,
+            )
+
+            if response.status_code == 429:
+                retry_after = response.headers.get("retry-after")
+                raise TwitterRateLimitError(
+                    retry_after=int(retry_after) if retry_after else None
+                )
+
+            if response.status_code == 403:
+                # Likely insufficient permissions
+                logger.warning("Twitter search not available - may need elevated access")
+                return []
+
+            if response.status_code != 200:
+                logger.error(
+                    "Twitter search failed",
+                    status_code=response.status_code,
+                    response=response.text,
+                )
+                return []
+
+            data = response.json()
+            tweets = data.get("data", [])
+            users = {u["id"]: u for u in data.get("includes", {}).get("users", [])}
+
+            # Enrich tweets with author info
+            results = []
+            for tweet in tweets:
+                author = users.get(tweet.get("author_id"), {})
+                results.append({
+                    "id": tweet.get("id"),
+                    "text": tweet.get("text"),
+                    "created_at": tweet.get("created_at"),
+                    "metrics": tweet.get("public_metrics", {}),
+                    "author_username": author.get("username"),
+                    "author_name": author.get("name"),
+                    "author_verified": author.get("verified", False),
+                })
+
+            logger.info(
+                "Twitter search completed",
+                query=query[:50],
+                results_count=len(results),
+            )
+
+            return results
+
+        except httpx.RequestError as e:
+            logger.error("Twitter search request error", error=str(e))
+            return []
+
+    async def get_trending_topics(
+        self,
+        access_token: str,
+        woeid: int = 1,  # 1 = Worldwide, 23424977 = USA
+    ) -> list[dict[str, Any]]:
+        """
+        Get trending topics for a location.
+
+        Note: Requires elevated API access. Returns empty list if not available.
+
+        Args:
+            access_token: Valid Twitter access token
+            woeid: Yahoo! Where On Earth ID (1 = worldwide)
+
+        Returns:
+            List of trending topics with name and tweet volume
+        """
+        client = await self.get_client()
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        try:
+            # Twitter API v2 trends endpoint
+            response = await client.get(
+                f"{self.TWITTER_API_BASE}/trends/by/woeid/{woeid}",
+                headers=headers,
+            )
+
+            if response.status_code == 429:
+                retry_after = response.headers.get("retry-after")
+                raise TwitterRateLimitError(
+                    retry_after=int(retry_after) if retry_after else None
+                )
+
+            if response.status_code in [403, 404]:
+                # Trends endpoint requires elevated access
+                logger.info("Twitter trends not available - requires elevated access")
+                return []
+
+            if response.status_code != 200:
+                logger.warning(
+                    "Twitter trends request failed",
+                    status_code=response.status_code,
+                )
+                return []
+
+            data = response.json()
+            trends = []
+
+            for trend in data.get("data", []):
+                trends.append({
+                    "name": trend.get("name"),
+                    "tweet_count": trend.get("tweet_count"),
+                    "description": trend.get("description"),
+                })
+
+            logger.info("Twitter trends fetched", count=len(trends))
+            return trends
+
+        except httpx.RequestError as e:
+            logger.error("Twitter trends request error", error=str(e))
+            return []
+
+    async def get_popular_tweets_about_topic(
+        self,
+        access_token: str,
+        topic: str,
+        max_results: int = 5,
+    ) -> list[dict[str, Any]]:
+        """
+        Get popular/engaging tweets about a topic.
+
+        Searches for recent tweets and sorts by engagement.
+
+        Args:
+            access_token: Valid Twitter access token
+            topic: Topic to search for
+            max_results: Number of top tweets to return
+
+        Returns:
+            List of popular tweets sorted by engagement
+        """
+        # Search for more tweets than needed, then filter by engagement
+        tweets = await self.search_recent_tweets(
+            access_token=access_token,
+            query=topic,
+            max_results=50,
+            sort_order="relevancy",
+        )
+
+        if not tweets:
+            return []
+
+        # Score tweets by engagement
+        def engagement_score(tweet: dict) -> int:
+            metrics = tweet.get("metrics", {})
+            return (
+                metrics.get("like_count", 0) * 1 +
+                metrics.get("retweet_count", 0) * 3 +
+                metrics.get("reply_count", 0) * 2 +
+                metrics.get("quote_count", 0) * 4
+            )
+
+        # Sort by engagement and return top results
+        sorted_tweets = sorted(tweets, key=engagement_score, reverse=True)
+        return sorted_tweets[:max_results]
+
+    def format_twitter_context_for_prompt(
+        self,
+        tweets: list[dict[str, Any]],
+        trends: list[dict[str, Any]] = None,
+    ) -> str:
+        """
+        Format Twitter search results and trends for LLM prompt.
+
+        Args:
+            tweets: List of tweet objects from search
+            trends: Optional list of trending topics
+
+        Returns:
+            Formatted string for prompt context
+        """
+        parts = []
+
+        if trends:
+            trending_names = [t["name"] for t in trends[:5] if t.get("name")]
+            if trending_names:
+                parts.append(f"Currently trending on Twitter: {', '.join(trending_names)}")
+
+        if tweets:
+            parts.append("\nPopular tweets about this topic:")
+            for i, tweet in enumerate(tweets[:5], 1):
+                author = tweet.get("author_username", "unknown")
+                text = tweet.get("text", "")[:200]
+                metrics = tweet.get("metrics", {})
+                likes = metrics.get("like_count", 0)
+                retweets = metrics.get("retweet_count", 0)
+
+                parts.append(
+                    f"{i}. @{author} ({likes} likes, {retweets} RTs):\n   \"{text}\""
+                )
+
+        if not parts:
+            return ""
+
+        return "\n".join(parts)

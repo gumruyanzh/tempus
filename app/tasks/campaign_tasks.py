@@ -185,6 +185,49 @@ async def _generate_and_post_campaign_tweet_async(task, tweet_id: str) -> dict:
                             await web_search_service.close()
                             web_search_service = None
 
+            # Step 1.5: Fetch Twitter context (trending tweets about topic)
+            twitter_context = ""
+            twitter_service = TwitterService(db)
+            try:
+                access_token = await twitter_service.get_valid_access_token(campaign.user_id)
+                if access_token:
+                    # Get popular tweets about the topic
+                    popular_tweets = await twitter_service.get_popular_tweets_about_topic(
+                        access_token=access_token,
+                        topic=campaign.topic,
+                        max_results=5,
+                    )
+
+                    # Try to get trending topics (may fail if no elevated access)
+                    trending_topics = await twitter_service.get_trending_topics(
+                        access_token=access_token,
+                        woeid=1,  # Worldwide
+                    )
+
+                    if popular_tweets or trending_topics:
+                        twitter_context = twitter_service.format_twitter_context_for_prompt(
+                            tweets=popular_tweets,
+                            trends=trending_topics,
+                        )
+                        logger.info(
+                            "Twitter context fetched for campaign tweet",
+                            tweet_id=tweet_id,
+                            popular_tweets=len(popular_tweets),
+                            trending_topics=len(trending_topics),
+                        )
+            except (TwitterAPIError, TwitterRateLimitError) as e:
+                logger.warning(
+                    "Twitter context fetch failed, continuing without",
+                    tweet_id=tweet_id,
+                    error=str(e),
+                )
+            except Exception as e:
+                logger.warning(
+                    "Unexpected error fetching Twitter context",
+                    tweet_id=tweet_id,
+                    error=str(e),
+                )
+
             # Step 2: Fetch previously posted tweets to avoid repetition
             campaign_service = CampaignService(db)
             previous_tweets = await campaign_service.get_campaign_tweets(
@@ -246,6 +289,13 @@ Tweet #{tweet_number} of {total_tweets} in this campaign.
             if search_context:
                 generation_prompt += f"""Recent news and context (incorporate fresh angles from this):
 {search_context}
+
+"""
+            if twitter_context:
+                generation_prompt += f"""What's happening on Twitter right now about this topic:
+{twitter_context}
+
+Consider joining the conversation or offering a unique perspective on what others are saying.
 
 """
             if previous_content:
@@ -315,8 +365,9 @@ If you catch yourself writing something similar to a previous tweet, STOP and tr
                     await deepseek_service.close()
                     deepseek_service = None
 
-            # Step 3: Post to Twitter
-            twitter_service = TwitterService(db)
+            # Step 4: Post to Twitter (reuse twitter_service from context fetch)
+            if twitter_service is None:
+                twitter_service = TwitterService(db)
             access_token = await twitter_service.get_valid_access_token(campaign.user_id)
 
             if not access_token:

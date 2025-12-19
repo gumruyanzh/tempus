@@ -394,12 +394,26 @@ Generate a comprehensive plan. Output ONLY valid JSON."""
         engagement_bonus = quality_score * 2  # Up to 2% bonus
         expected_engagement = base_engagement + engagement_bonus
 
+        # Calculate total engagements over the duration
+        total_engagements = (
+            strategy.daily_follows +
+            strategy.daily_likes +
+            strategy.daily_retweets +
+            strategy.daily_replies
+        ) * strategy.duration_days
+
+        # Calculate overall conversion rate
+        conversion_rate = total_gained / max(total_engagements, 1)
+
         results = {
             "estimated_new_followers": int(total_gained),
             "estimated_total_followers": int(current),
             "estimated_engagement_rate": round(expected_engagement, 1),
             "daily_growth_rate": round(base_daily_new, 2),
+            "total_engagements": total_engagements,
+            "conversion_rate": round(conversion_rate, 4),
             "milestones": milestones,
+            "confidence": "medium",
             "confidence_level": "medium",
             "key_factors": [
                 "Consistency of engagement",

@@ -50,6 +50,13 @@ class AuditAction(str, enum.Enum):
     CAMPAIGN_CANCELLED = "campaign_cancelled"
     CAMPAIGN_COMPLETED = "campaign_completed"
 
+    # Growth Strategies
+    GROWTH_STRATEGY_CREATED = "growth_strategy_created"
+    GROWTH_STRATEGY_PAUSED = "growth_strategy_paused"
+    GROWTH_STRATEGY_RESUMED = "growth_strategy_resumed"
+    GROWTH_STRATEGY_CANCELLED = "growth_strategy_cancelled"
+    GROWTH_STRATEGY_COMPLETED = "growth_strategy_completed"
+
     # Settings
     SETTINGS_UPDATED = "settings_updated"
     TIMEZONE_CHANGED = "timezone_changed"

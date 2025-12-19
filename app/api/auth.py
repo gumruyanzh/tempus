@@ -95,22 +95,25 @@ async def login(
     await db.commit()
 
     # Set cookies and redirect
+    # Use samesite="lax" to allow OAuth redirects while maintaining security
     redirect = RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
     redirect.set_cookie(
         key="access_token",
         value=tokens["access_token"],
         httponly=True,
         secure=settings.is_production,
-        samesite="strict",
+        samesite="lax",
         max_age=settings.jwt_access_token_expire_minutes * 60,
+        path="/",
     )
     redirect.set_cookie(
         key="refresh_token",
         value=tokens["refresh_token"],
         httponly=True,
         secure=settings.is_production,
-        samesite="strict",
+        samesite="lax",
         max_age=settings.jwt_refresh_token_expire_days * 24 * 60 * 60,
+        path="/",
     )
 
     logger.info("User logged in", user_id=str(user.id))
@@ -187,16 +190,18 @@ async def register(
             value=tokens["access_token"],
             httponly=True,
             secure=settings.is_production,
-            samesite="strict",
+            samesite="lax",
             max_age=settings.jwt_access_token_expire_minutes * 60,
+            path="/",
         )
         redirect.set_cookie(
             key="refresh_token",
             value=tokens["refresh_token"],
             httponly=True,
             secure=settings.is_production,
-            samesite="strict",
+            samesite="lax",
             max_age=settings.jwt_refresh_token_expire_days * 24 * 60 * 60,
+            path="/",
         )
 
         logger.info("User registered", user_id=str(user.id))
@@ -226,8 +231,8 @@ async def logout(
     await db.commit()
 
     response = RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
 
     logger.info("User logged out", user_id=str(user.id))
     return response
@@ -368,6 +373,7 @@ async def twitter_callback(
                 secure=settings.is_production,
                 samesite="lax",
                 max_age=settings.jwt_access_token_expire_minutes * 60,
+                path="/",
             )
             redirect.set_cookie(
                 key="refresh_token",
@@ -376,8 +382,9 @@ async def twitter_callback(
                 secure=settings.is_production,
                 samesite="lax",
                 max_age=settings.jwt_refresh_token_expire_days * 24 * 60 * 60,
+                path="/",
             )
-            redirect.delete_cookie("twitter_oauth_state")
+            redirect.delete_cookie("twitter_oauth_state", path="/")
 
             logger.info(
                 "User signed in via Twitter",
@@ -422,7 +429,7 @@ async def twitter_callback(
                 url="/settings?success=Twitter+account+connected",
                 status_code=status.HTTP_302_FOUND,
             )
-            response.delete_cookie("twitter_oauth_state")
+            response.delete_cookie("twitter_oauth_state", path="/")
             return response
 
     except Exception as e:

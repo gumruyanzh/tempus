@@ -190,46 +190,94 @@ async def _generate_and_post_campaign_tweet_async(task, tweet_id: str) -> dict:
             previous_tweets = await campaign_service.get_campaign_tweets(
                 campaign_id=campaign.id,
                 status=TweetStatus.POSTED,
-                limit=10,
+                limit=25,  # Fetch more for better context
             )
 
             # Build list of previous tweet content for context
             previous_content = ""
             if previous_tweets:
                 previous_content = "\n".join([
-                    f"- {t.content[:100]}..." if len(t.content) > 100 else f"- {t.content}"
-                    for t in previous_tweets
+                    f"- {t.content}" for t in previous_tweets[:15]  # Show full content of recent tweets
                 ])
 
-            # Step 3: Generate tweet content with uniqueness constraints
+            # Calculate tweet number for variety
+            tweet_number = campaign.tweets_posted + 1
+            total_tweets = campaign.total_tweets
+
+            # Define different angles/approaches to cycle through
+            import random
+            angles = [
+                "Share a surprising fact or statistic",
+                "Ask a thought-provoking question",
+                "Share a personal observation or insight",
+                "Provide a practical tip or advice",
+                "Challenge a common misconception",
+                "Share a prediction or future trend",
+                "Tell a mini-story or anecdote",
+                "Make a bold statement or hot take",
+                "Share a lesson learned",
+                "Highlight an underrated aspect",
+                "Compare or contrast two ideas",
+                "Share what most people get wrong",
+            ]
+            selected_angle = angles[(tweet_number - 1) % len(angles)]
+
+            # Add randomness to opening styles
+            opening_styles = [
+                "Start with a question",
+                "Start with a bold claim",
+                "Start with 'I' and a personal take",
+                "Start with a number or statistic",
+                "Start with 'Here's the thing about...'",
+                "Start with a contrarian view",
+                "Start mid-thought, as if continuing a conversation",
+                "Start with an observation",
+            ]
+            selected_opening = random.choice(opening_styles)
+
+            # Step 3: Generate tweet content with STRONG uniqueness constraints
             generation_prompt = f"""Topic: {campaign.topic}
+
+APPROACH FOR THIS TWEET: {selected_angle}
+OPENING STYLE: {selected_opening}
+Tweet #{tweet_number} of {total_tweets} in this campaign.
 
 """
             if search_context:
-                generation_prompt += f"""Recent news and context to incorporate (use this to make the tweet timely and relevant):
+                generation_prompt += f"""Recent news and context (incorporate fresh angles from this):
 {search_context}
 
 """
             if previous_content:
-                generation_prompt += f"""IMPORTANT - Previously posted tweets (DO NOT repeat these ideas or structures):
+                generation_prompt += f"""=== BANNED CONTENT - DO NOT USE ANYTHING SIMILAR ===
+These are previous tweets. Your tweet MUST be COMPLETELY DIFFERENT in:
+- Opening words (first 3-4 words must be unique)
+- Main idea/angle
+- Sentence structure
+- Tone variation
+
+Previous tweets to AVOID copying:
 {previous_content}
+=== END BANNED CONTENT ===
 
 """
             if campaign.custom_instructions:
                 generation_prompt += f"""Special instructions: {campaign.custom_instructions}
 
 """
-            generation_prompt += """Create a UNIQUE, engaging tweet about this topic.
+            generation_prompt += f"""Create a FRESH, UNIQUE tweet that is COMPLETELY DIFFERENT from all previous tweets.
 
-CRITICAL REQUIREMENTS:
-1. DO NOT start the tweet the same way as any previous tweets
-2. Use a completely different angle, hook, or perspective
-3. Vary sentence structure and length
-4. Be conversational, authentic, and human-like
-5. Provide genuine value or insight to the reader
-6. Avoid generic openings like "The [topic] is..." - be creative!
+MANDATORY REQUIREMENTS:
+1. Your opening MUST be different from ALL previous tweets - check first 4 words
+2. Use the "{selected_angle}" approach
+3. {selected_opening}
+4. Cover a NEW aspect of {campaign.topic} not mentioned in previous tweets
+5. Vary your sentence length and rhythm
+6. Sound like a real human having a genuine thought, not a content bot
+7. NO generic phrases like "The future of...", "In today's world...", "It's important to..."
+8. Be specific, opinionated, and valuable
 
-Write like a real person sharing a genuine thought, not a content machine."""
+If you catch yourself writing something similar to a previous tweet, STOP and try a completely different angle."""
 
             try:
                 generated_content = await deepseek_service.generate_tweet(

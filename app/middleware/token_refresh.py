@@ -53,6 +53,7 @@ class TokenRefreshMiddleware(BaseHTTPMiddleware):
         )
 
         # Set the new access token cookie on the response
+        # Use samesite="lax" to allow OAuth redirects while maintaining security
         response.set_cookie(
             key="access_token",
             value=new_access_token,
@@ -60,6 +61,7 @@ class TokenRefreshMiddleware(BaseHTTPMiddleware):
             secure=settings.is_production,
             samesite="lax",
             max_age=settings.jwt_access_token_expire_minutes * 60,
+            path="/",
         )
 
         logger.debug("Access token refreshed", user_id=user_id)

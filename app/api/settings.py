@@ -10,6 +10,7 @@ from app.auth.dependencies import CurrentUser, get_client_ip
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.core.security import generate_csrf_token
+from app.models.audit import AuditAction
 from app.models.tweet import TweetTone
 from app.models.user import APIKeyType
 from app.services.audit import AuditService
@@ -122,7 +123,7 @@ async def change_password(
         )
 
         await audit_service.log(
-            action=audit_service.log.__self__.__class__.__bases__[0],
+            action=AuditAction.SETTINGS_UPDATED,
             user_id=user.id,
             resource_type="user",
             details={"action": "password_changed"},
@@ -224,10 +225,10 @@ async def delete_deepseek_key(
 
     if success:
         await audit_service.log(
-            action=audit_service.log.__self__.__class__.__bases__[0],
+            action=AuditAction.API_KEY_DELETED,
             user_id=user.id,
             resource_type="api_key",
-            details={"key_type": "deepseek", "action": "deleted"},
+            details={"key_type": "deepseek"},
             ip_address=get_client_ip(request),
         )
         await db.commit()
@@ -309,10 +310,10 @@ async def delete_tavily_key(
 
     if success:
         await audit_service.log(
-            action=audit_service.log.__self__.__class__.__bases__[0],
+            action=AuditAction.API_KEY_DELETED,
             user_id=user.id,
             resource_type="api_key",
-            details={"key_type": "tavily", "action": "deleted"},
+            details={"key_type": "tavily"},
             ip_address=get_client_ip(request),
         )
         await db.commit()

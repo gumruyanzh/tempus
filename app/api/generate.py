@@ -77,6 +77,10 @@ async def generate_tweet(
             status_code=status.HTTP_302_FOUND,
         )
 
+    # Fetch recent tweets for content diversity
+    tweet_service = TweetService(db)
+    recent_tweets = await tweet_service.get_recent_posted_tweets(user.id, limit=20)
+
     deepseek_service = DeepSeekService(api_key)
     audit_service = AuditService(db)
 
@@ -84,12 +88,13 @@ async def generate_tweet(
         # Map tone string to enum
         tone_enum = TweetTone(tone)
 
-        # Generate tweet
+        # Generate tweet with recent tweets for diversity
         generated_content = await deepseek_service.generate_tweet(
             prompt=prompt,
             tone=tone_enum,
             custom_system_prompt=user.default_prompt_template,
             instructions=instructions,
+            recent_tweets=recent_tweets,
         )
 
         # Log audit
@@ -157,19 +162,24 @@ async def generate_thread(
             status_code=status.HTTP_302_FOUND,
         )
 
+    # Fetch recent tweets for content diversity
+    tweet_service = TweetService(db)
+    recent_tweets = await tweet_service.get_recent_posted_tweets(user.id, limit=20)
+
     deepseek_service = DeepSeekService(api_key)
 
     try:
         # Map tone string to enum
         tone_enum = TweetTone(tone)
 
-        # Generate thread
+        # Generate thread with recent tweets for diversity
         generated_tweets = await deepseek_service.generate_thread(
             prompt=prompt,
             num_tweets=num_tweets,
             tone=tone_enum,
             custom_system_prompt=user.default_prompt_template,
             instructions=instructions,
+            recent_tweets=recent_tweets,
         )
 
         csrf_token = generate_csrf_token()

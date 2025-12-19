@@ -56,6 +56,8 @@ CRITICAL RULES:
 
 {tone_instructions}
 
+{diversity_instructions}
+
 Output format:
 - For single tweets: Return ONLY the tweet text, nothing else
 - For threads: Return each tweet on a separate line, numbered (1., 2., 3., etc.)
@@ -90,9 +92,10 @@ Output format:
         tone: TweetTone = TweetTone.PROFESSIONAL,
         custom_system_prompt: Optional[str] = None,
         instructions: Optional[str] = None,
+        recent_tweets: Optional[list[str]] = None,
     ) -> str:
         """Generate a single tweet."""
-        system_prompt = self._build_system_prompt(tone, custom_system_prompt)
+        system_prompt = self._build_system_prompt(tone, custom_system_prompt, recent_tweets)
 
         instructions_text = f"\n\nAdditional instructions: {instructions}" if instructions else ""
 
@@ -137,6 +140,7 @@ Return ONLY the tweet text, no explanations."""
         tone: TweetTone = TweetTone.PROFESSIONAL,
         custom_system_prompt: Optional[str] = None,
         instructions: Optional[str] = None,
+        recent_tweets: Optional[list[str]] = None,
     ) -> list[str]:
         """Generate a thread of tweets."""
         if num_tweets < 2:
@@ -144,7 +148,7 @@ Return ONLY the tweet text, no explanations."""
         if num_tweets > 10:
             num_tweets = 10
 
-        system_prompt = self._build_system_prompt(tone, custom_system_prompt)
+        system_prompt = self._build_system_prompt(tone, custom_system_prompt, recent_tweets)
 
         instructions_text = f"\n\nAdditional instructions: {instructions}" if instructions else ""
 
@@ -234,15 +238,31 @@ Return ONLY the improved tweet text."""
         self,
         tone: TweetTone,
         custom_prompt: Optional[str] = None,
+        recent_tweets: Optional[list[str]] = None,
     ) -> str:
-        """Build the system prompt with tone instructions."""
+        """Build the system prompt with tone and diversity instructions."""
         tone_instructions = self.TONE_PROMPTS.get(
             tone,
             self.TONE_PROMPTS[TweetTone.PROFESSIONAL],
         )
 
+        # Build diversity instructions based on recent tweets
+        diversity_instructions = ""
+        if recent_tweets and len(recent_tweets) > 0:
+            tweets_list = "\n".join([f"- {tweet[:100]}..." if len(tweet) > 100 else f"- {tweet}" for tweet in recent_tweets[:20]])
+            diversity_instructions = f"""CONTENT DIVERSITY REQUIREMENT:
+The user has recently posted these tweets. You MUST write about a DIFFERENT topic/theme:
+
+{tweets_list}
+
+IMPORTANT: Analyze the themes above and ensure your new tweet covers a completely different subject.
+Do NOT write about the same topics, angles, or ideas. Be creative and diverse."""
+
         base_prompt = custom_prompt or self.DEFAULT_SYSTEM_PROMPT
-        return base_prompt.format(tone_instructions=tone_instructions)
+        return base_prompt.format(
+            tone_instructions=tone_instructions,
+            diversity_instructions=diversity_instructions,
+        )
 
     async def _call_api(
         self,

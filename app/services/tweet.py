@@ -348,6 +348,25 @@ class TweetService:
 
         return log
 
+    async def get_recent_posted_tweets(
+        self,
+        user_id: UUID,
+        limit: int = 20,
+    ) -> list[str]:
+        """Get recent posted tweet contents for diversity checking."""
+        stmt = (
+            select(ScheduledTweet.content)
+            .where(
+                ScheduledTweet.user_id == user_id,
+                ScheduledTweet.status == TweetStatus.POSTED,
+                ScheduledTweet.deleted_at.is_(None),
+            )
+            .order_by(ScheduledTweet.posted_at.desc())
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return [row[0] for row in result.fetchall()]
+
     async def get_tweet_stats(
         self,
         user_id: UUID,

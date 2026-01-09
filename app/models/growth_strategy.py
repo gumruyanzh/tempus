@@ -18,11 +18,11 @@ if TYPE_CHECKING:
 class StrategyStatus(str, enum.Enum):
     """Status of a growth strategy."""
 
-    DRAFT = "draft"
-    ACTIVE = "active"
-    PAUSED = "paused"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
 
 
 class VerificationStatus(str, enum.Enum):
@@ -61,6 +61,15 @@ class ActionType(str, enum.Enum):
     REPLY = "reply"
     QUOTE_TWEET = "quote_tweet"
     POST = "post"  # Original tweets/posts
+
+
+class ConversationStatus(str, enum.Enum):
+    """Status of a conversation thread."""
+
+    ACTIVE = "active"  # Actively monitoring for replies
+    PAUSED = "paused"  # Temporarily paused (rate limits, etc.)
+    COMPLETED = "completed"  # Conversation ended naturally
+    ABANDONED = "abandoned"  # No response received within monitoring window
 
 
 class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
@@ -265,6 +274,21 @@ class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
         nullable=True,
     )
 
+    # Trending topics feature
+    use_trending_topics: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    trending_topics_cache: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    trending_topics_updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     # Relationships
     user: Mapped["User"] = relationship(
         "User",
@@ -282,6 +306,16 @@ class GrowthStrategy(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     )
     daily_progress: Mapped[List["DailyProgress"]] = relationship(
         "DailyProgress",
+        back_populates="strategy",
+        lazy="selectin",
+    )
+    conversation_threads: Mapped[List["ConversationThread"]] = relationship(
+        "ConversationThread",
+        back_populates="strategy",
+        lazy="selectin",
+    )
+    circle1_members: Mapped[List["Circle1Member"]] = relationship(
+        "Circle1Member",
         back_populates="strategy",
         lazy="selectin",
     )
@@ -601,6 +635,11 @@ class EngagementLog(Base, UUIDMixin, TimestampMixin):
         "GrowthStrategy",
         back_populates="engagement_logs",
     )
+    conversation_thread: Mapped[Optional["ConversationThread"]] = relationship(
+        "ConversationThread",
+        back_populates="engagement_log",
+        uselist=False,
+    )
 
 
 class DailyProgress(Base, UUIDMixin):
@@ -738,4 +777,478 @@ class RateLimitTracker(Base, UUIDMixin, TimestampMixin):
     last_reset: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+    )
+
+
+class ConversationThread(Base, UUIDMixin, TimestampMixin):
+    """Track conversation threads for reply-to-reply optimization.
+
+    This model captures the 75x algorithmic multiplier from continuing
+    conversations beyond the initial reply.
+    """
+
+    __tablename__ = "conversation_threads"
+
+    strategy_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("growth_strategies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    engagement_log_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        GUID(),
+        ForeignKey("engagement_logs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Original tweet we replied to
+    original_tweet_id: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+    )
+    original_tweet_author_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+    original_tweet_author_username: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+    original_tweet_content: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    # Our first reply that started this conversation
+    our_reply_tweet_id: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    our_reply_content: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    # Conversation status
+    status: Mapped[ConversationStatus] = mapped_column(
+        Enum(ConversationStatus),
+        default=ConversationStatus.ACTIVE,
+        nullable=False,
+        index=True,
+    )
+
+    # Conversation depth (number of turns, our first reply = 1)
+    depth: Mapped[int] = mapped_column(
+        Integer,
+        default=1,
+        nullable=False,
+    )
+    max_depth: Mapped[int] = mapped_column(
+        Integer,
+        default=3,
+        nullable=False,
+    )
+
+    # Scoring and tracking
+    engagement_score: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        nullable=False,
+    )
+    priority_score: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        nullable=False,
+        index=True,
+    )
+
+    # Author metrics for priority scoring
+    author_follower_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    author_following_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    # Outcome tracking
+    led_to_follow: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    total_engagement_gained: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    # Timing for monitoring
+    last_checked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_reply_received_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    next_check_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    # Stop checking after this time (default 6 hours after creation)
+    monitoring_until: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    # Relationships
+    strategy: Mapped["GrowthStrategy"] = relationship(
+        "GrowthStrategy",
+        back_populates="conversation_threads",
+    )
+    engagement_log: Mapped[Optional["EngagementLog"]] = relationship(
+        "EngagementLog",
+        back_populates="conversation_thread",
+    )
+    replies: Mapped[List["ConversationReply"]] = relationship(
+        "ConversationReply",
+        back_populates="thread",
+        lazy="selectin",
+        order_by="ConversationReply.posted_at",
+    )
+
+    def calculate_priority_score(self) -> float:
+        """Calculate priority score based on author quality and engagement.
+
+        Priority factors (0-100 scale):
+        - Author follower count: 1K-50K = sweet spot (30% weight)
+        - Reply quality indicators (25% weight)
+        - Engagement on conversation (25% weight)
+        - Response velocity (20% weight)
+        """
+        score = 0.0
+
+        # Author follower factor (1K-50K is sweet spot)
+        if self.author_follower_count:
+            if 1000 <= self.author_follower_count <= 50000:
+                score += 30.0  # Perfect range
+            elif 500 <= self.author_follower_count < 1000:
+                score += 20.0  # Good but small
+            elif 50000 < self.author_follower_count <= 100000:
+                score += 15.0  # Decent, but might not engage
+            elif self.author_follower_count > 100000:
+                score += 5.0  # Unlikely to respond
+
+        # Depth bonus (deeper conversations are more valuable)
+        if self.depth >= 2:
+            score += 25.0
+        elif self.depth == 1:
+            score += 10.0
+
+        # Engagement gained bonus
+        engagement = self.total_engagement_gained or 0
+        if engagement > 10:
+            score += 25.0
+        elif engagement > 5:
+            score += 15.0
+        elif engagement > 0:
+            score += 10.0
+
+        # Response velocity (if they replied quickly, prioritize)
+        if self.last_reply_received_at and self.created_at:
+            time_to_reply = (self.last_reply_received_at - self.created_at).total_seconds()
+            if time_to_reply < 300:  # < 5 minutes
+                score += 20.0
+            elif time_to_reply < 900:  # < 15 minutes
+                score += 15.0
+            elif time_to_reply < 1800:  # < 30 minutes
+                score += 10.0
+
+        self.priority_score = min(score, 100.0)
+        return self.priority_score
+
+    def should_continue(self) -> bool:
+        """Determine if we should continue this conversation."""
+        if self.status != ConversationStatus.ACTIVE:
+            return False
+        if self.depth >= self.max_depth:
+            return False
+        if datetime.now(timezone.utc) > self.monitoring_until:
+            return False
+        return self.priority_score >= 50.0
+
+    def mark_completed(self, reason: str = "natural_end") -> None:
+        """Mark conversation as completed."""
+        self.status = ConversationStatus.COMPLETED
+
+    def mark_abandoned(self) -> None:
+        """Mark conversation as abandoned (no response received)."""
+        self.status = ConversationStatus.ABANDONED
+
+    def increment_depth(self) -> None:
+        """Increment conversation depth after sending a reply."""
+        self.depth += 1
+
+
+class Circle1Member(Base, UUIDMixin, TimestampMixin):
+    """Track Circle 1 members - top mutual engagers for nurturing.
+
+    Algorithm research shows:
+    - Circle 1 = mutual follows + frequent engagement (highest trust)
+    - Minimum 1 touchpoint per week with each Circle 1 member
+    - Content distribution flows outward from Circle 1
+    """
+
+    __tablename__ = "circle1_members"
+
+    strategy_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("growth_strategies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Twitter user info
+    twitter_user_id: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+    )
+    twitter_username: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    # Metrics
+    follower_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    following_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    # Engagement tracking
+    mutual_follow: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+    total_engagements_sent: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+    total_engagements_received: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    # Circle 1 score (0-100)
+    circle1_score: Mapped[float] = mapped_column(
+        Float,
+        default=0.0,
+        nullable=False,
+        index=True,
+    )
+
+    # Touchpoint tracking
+    last_engagement_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_touchpoint_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    touchpoints_this_week: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
+    # Weekly touchpoint requirement
+    requires_touchpoint: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+
+    # Active status
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+        index=True,
+    )
+
+    # Relationships
+    strategy: Mapped["GrowthStrategy"] = relationship(
+        "GrowthStrategy",
+        back_populates="circle1_members",
+    )
+
+    def calculate_circle1_score(self) -> float:
+        """Calculate Circle 1 score based on mutual engagement.
+
+        Factors:
+        - Mutual follow (30%)
+        - Total engagements received from them (35%)
+        - Total engagements we sent (20%)
+        - Engagement recency (15%)
+        """
+        score = 0.0
+
+        # Mutual follow factor
+        if self.mutual_follow:
+            score += 30.0
+
+        # Engagements received (they engage with us)
+        if self.total_engagements_received > 20:
+            score += 35.0
+        elif self.total_engagements_received > 10:
+            score += 25.0
+        elif self.total_engagements_received > 5:
+            score += 15.0
+        elif self.total_engagements_received > 0:
+            score += 5.0
+
+        # Engagements sent (we engage with them)
+        if self.total_engagements_sent > 15:
+            score += 20.0
+        elif self.total_engagements_sent > 7:
+            score += 15.0
+        elif self.total_engagements_sent > 3:
+            score += 10.0
+        elif self.total_engagements_sent > 0:
+            score += 5.0
+
+        # Recency factor
+        if self.last_engagement_at:
+            days_since = (datetime.now(timezone.utc) - self.last_engagement_at).days
+            if days_since <= 3:
+                score += 15.0
+            elif days_since <= 7:
+                score += 10.0
+            elif days_since <= 14:
+                score += 5.0
+
+        self.circle1_score = min(score, 100.0)
+        return self.circle1_score
+
+    def record_touchpoint(self) -> None:
+        """Record a touchpoint with this Circle 1 member."""
+        self.last_touchpoint_at = datetime.now(timezone.utc)
+        self.touchpoints_this_week += 1
+        self.requires_touchpoint = False
+
+    def reset_weekly_touchpoints(self) -> None:
+        """Reset weekly touchpoint counter (called weekly)."""
+        self.touchpoints_this_week = 0
+        self.requires_touchpoint = True
+
+    def needs_touchpoint(self) -> bool:
+        """Check if this member needs a touchpoint this week."""
+        if not self.is_active:
+            return False
+        if self.touchpoints_this_week > 0:
+            return False
+        if self.last_touchpoint_at:
+            days_since = (datetime.now(timezone.utc) - self.last_touchpoint_at).days
+            return days_since >= 5  # Start looking for touchpoint after 5 days
+        return True
+
+
+class ConversationReply(Base, UUIDMixin, TimestampMixin):
+    """Individual reply in a conversation thread."""
+
+    __tablename__ = "conversation_replies"
+
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("conversation_threads.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # The tweet in the conversation
+    tweet_id: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    in_reply_to_tweet_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    # Who posted it
+    author_id: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+    )
+    author_username: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+    is_from_us: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        index=True,
+    )
+
+    # Content
+    content: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    # Engagement metrics at time of capture
+    like_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    reply_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    retweet_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    # For our replies, AI generation info
+    ai_prompt_used: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    generation_quality_score: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+
+    # Response timing
+    response_delay_seconds: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    posted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+
+    # Relationships
+    thread: Mapped["ConversationThread"] = relationship(
+        "ConversationThread",
+        back_populates="replies",
     )

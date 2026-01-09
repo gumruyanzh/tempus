@@ -13,6 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.models.growth_strategy import (
     ActionType,
+    Circle1Member,
+    ConversationReply,
+    ConversationStatus,
+    ConversationThread,
     DailyProgress,
     EngagementLog,
     EngagementStatus,
@@ -53,8 +57,568 @@ class StrategyConfig:
 class GrowthStrategyService:
     """Service for managing Twitter growth strategies."""
 
+    # Algorithm-derived constants from Twitter research
+    RATIO_THRESHOLDS = {
+        "suppressed": 0.1,      # Below this = spam suppressed
+        "reduced": 0.5,         # Below this = reduced distribution
+        "neutral": 1.0,         # Neutral point
+        "boosted": 1.5,         # Target minimum
+        "significant": 2.0,     # Significant boost
+        "authority": 10.0,      # Authority status
+    }
+
+    # Spam detection thresholds (per hour)
+    SPAM_LIMITS = {
+        "follows_per_hour": 40,     # >50 triggers suppression (we use 40 for safety)
+        "unfollows_per_hour": 25,   # >30 triggers penalty
+        "likes_per_hour": 80,       # Conservative limit
+        "posts_per_hour": 15,       # Includes replies
+    }
+
+    # Account tier definitions
+    ACCOUNT_TIERS = {
+        "starter": (0, 1000),       # 0-1K followers
+        "growing": (1000, 10000),   # 1K-10K followers
+        "established": (10000, float("inf")),  # 10K+
+    }
+
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ========== Algorithm Optimization Methods ==========
+
+    def calculate_safe_follow_limit(
+        self,
+        current_followers: int,
+        current_following: int,
+        target_ratio: float = 1.5,
+    ) -> dict:
+        """Calculate safe following limit to maintain healthy ratio.
+
+        Based on algorithm research:
+        - Ratio below 0.1 = suppressed as spam
+        - Ratio 0.5-1.0 = neutral
+        - Ratio 1.5+ = boosted distribution
+        - Ratio 2.0+ = significant boost
+
+        Args:
+            current_followers: Current follower count
+            current_following: Current following count
+            target_ratio: Target follower/following ratio (default 1.5)
+
+        Returns:
+            Dict with ratio info and safe limits
+        """
+        current_ratio = current_followers / max(current_following, 1)
+
+        # Calculate max following to maintain target ratio
+        # followers / max_following = target_ratio
+        # max_following = followers / target_ratio
+        max_following = int(current_followers / target_ratio)
+        safe_new_follows = max(0, max_following - current_following)
+
+        # Determine current ratio status
+        if current_ratio < self.RATIO_THRESHOLDS["suppressed"]:
+            status = "critical"
+            recommendation = "STOP following immediately. Focus on content to gain followers."
+        elif current_ratio < self.RATIO_THRESHOLDS["reduced"]:
+            status = "warning"
+            recommendation = "Reduce follows significantly. Ratio is hurting distribution."
+        elif current_ratio < self.RATIO_THRESHOLDS["neutral"]:
+            status = "caution"
+            recommendation = "Be conservative with follows. Ratio should improve."
+        elif current_ratio < self.RATIO_THRESHOLDS["boosted"]:
+            status = "good"
+            recommendation = "Healthy ratio. Can follow moderately."
+        else:
+            status = "excellent"
+            recommendation = "Strong ratio. Follow strategy unrestricted."
+
+        return {
+            "current_ratio": round(current_ratio, 2),
+            "status": status,
+            "recommendation": recommendation,
+            "max_following": max_following,
+            "safe_new_follows": safe_new_follows,
+            "current_followers": current_followers,
+            "current_following": current_following,
+            "target_ratio": target_ratio,
+        }
+
+    def get_account_tier(self, follower_count: int) -> str:
+        """Determine account tier based on follower count.
+
+        Different tiers have different optimal activity levels:
+        - starter (0-1K): Focus on quality replies, 15-20 replies/day
+        - growing (1K-10K): Balance content and engagement
+        - established (10K+): Focus on community, threads
+
+        Args:
+            follower_count: Current follower count
+
+        Returns:
+            Account tier name
+        """
+        for tier, (min_val, max_val) in self.ACCOUNT_TIERS.items():
+            if min_val <= follower_count < max_val:
+                return tier
+        return "starter"
+
+    def get_optimal_quotas_for_tier(
+        self,
+        tier: str,
+        ratio_status: str = "good",
+    ) -> dict:
+        """Get optimal daily activity quotas based on account tier.
+
+        Based on algorithm research:
+        - 0-1K: 2 posts, 15-20 replies to larger accounts, 10-15 follows
+        - 1K-10K: 2-3 posts, 10-15 replies, 5-10 follows
+        - 10K+: 4-5 posts, 10+ fan engagements, minimal follows
+
+        Args:
+            tier: Account tier (starter, growing, established)
+            ratio_status: Follower ratio status (affects follow limits)
+
+        Returns:
+            Dict of recommended daily quotas
+        """
+        # Base quotas by tier
+        quotas = {
+            "starter": {
+                "daily_posts": 2,
+                "daily_replies": 18,
+                "daily_follows": 12,
+                "daily_likes": 50,
+                "daily_retweets": 5,
+                "focus": "Quality replies to larger accounts in niche",
+            },
+            "growing": {
+                "daily_posts": 3,
+                "daily_replies": 12,
+                "daily_follows": 8,
+                "daily_likes": 75,
+                "daily_retweets": 8,
+                "focus": "Building Circle 1, authority content",
+            },
+            "established": {
+                "daily_posts": 5,
+                "daily_replies": 10,
+                "daily_follows": 3,  # Minimal to protect ratio
+                "daily_likes": 100,
+                "daily_retweets": 10,
+                "focus": "Community building, thread content",
+            },
+        }
+
+        base = quotas.get(tier, quotas["starter"])
+
+        # Adjust follows based on ratio status
+        ratio_multipliers = {
+            "critical": 0,        # No follows
+            "warning": 0.25,      # Very limited
+            "caution": 0.5,       # Half
+            "good": 1.0,          # Normal
+            "excellent": 1.5,     # Can be more aggressive
+        }
+
+        multiplier = ratio_multipliers.get(ratio_status, 1.0)
+        base["daily_follows"] = int(base["daily_follows"] * multiplier)
+
+        return base
+
+    def should_use_conservative_mode(
+        self,
+        account_created_at: Optional[datetime],
+        total_tweets: int = 0,
+    ) -> dict:
+        """Check if account should use conservative mode.
+
+        New accounts (< 90 days) get +20% reach on first 50 tweets IF they:
+        - Don't follow >100 users in first week
+        - Keep engagement rate above 1%
+        - Avoid spam signals
+
+        Args:
+            account_created_at: When the Twitter account was created
+            total_tweets: Total tweets posted by account
+
+        Returns:
+            Dict with conservative mode recommendation
+        """
+        if not account_created_at:
+            return {
+                "conservative_mode": False,
+                "reason": "Account age unknown",
+                "recommendations": [],
+            }
+
+        account_age_days = (datetime.now(timezone.utc) - account_created_at).days
+
+        if account_age_days <= 90:
+            in_first_week = account_age_days <= 7
+            under_50_tweets = total_tweets < 50
+
+            recommendations = []
+            if in_first_week:
+                recommendations.append("Limit to <100 follows this week")
+            if under_50_tweets:
+                recommendations.append("Focus on high-quality tweets to maximize new account boost")
+
+            recommendations.extend([
+                "Keep engagement rate above 1%",
+                "Avoid any spam-like behavior",
+                "Post consistently at same times",
+                "Stay in your niche (max 3 topics)",
+            ])
+
+            return {
+                "conservative_mode": True,
+                "account_age_days": account_age_days,
+                "has_new_account_boost": under_50_tweets,
+                "reason": f"Account is {account_age_days} days old (< 90 days)",
+                "recommendations": recommendations,
+                "max_daily_follows": 15 if in_first_week else 25,
+            }
+
+        return {
+            "conservative_mode": False,
+            "account_age_days": account_age_days,
+            "reason": "Account is established (> 90 days)",
+            "recommendations": [],
+        }
+
+    def calculate_engagement_distribution(
+        self,
+        total_replies: int,
+        follower_ratio: float = 0.4,
+    ) -> dict:
+        """Calculate optimal engagement distribution between followers/non-followers.
+
+        Algorithm research shows:
+        - Out-of-network engagement weighted higher (signals broader appeal)
+        - Optimal split: 40% to followers (nurture), 60% to non-followers (expansion)
+
+        Args:
+            total_replies: Total replies planned
+            follower_ratio: Percentage to allocate to followers (default 0.4)
+
+        Returns:
+            Dict with engagement distribution targets
+        """
+        to_followers = int(total_replies * follower_ratio)
+        to_non_followers = total_replies - to_followers
+
+        return {
+            "total_replies": total_replies,
+            "to_followers": to_followers,
+            "to_non_followers": to_non_followers,
+            "follower_ratio": follower_ratio,
+            "expansion_ratio": 1 - follower_ratio,
+            "strategy": "40% nurture existing followers, 60% expand to new audiences",
+        }
+
+    async def apply_tier_based_quotas(
+        self,
+        strategy: GrowthStrategy,
+        current_followers: int,
+        current_following: int,
+    ) -> dict:
+        """Apply optimal quotas based on account tier and ratio status.
+
+        Algorithm research shows different activity levels work best at different sizes:
+        - Starter (0-1K): Focus on quality replies to larger accounts
+        - Growing (1K-10K): Balance content and engagement
+        - Established (10K+): Community building, thread content
+
+        Args:
+            strategy: The growth strategy to update
+            current_followers: Current follower count
+            current_following: Current following count
+
+        Returns:
+            Dict with recommended quotas and whether updates were applied
+        """
+        # Determine account tier
+        tier = self.get_account_tier(current_followers)
+
+        # Get ratio status
+        ratio_info = self.calculate_safe_follow_limit(
+            current_followers=current_followers,
+            current_following=current_following,
+        )
+
+        # Get optimal quotas for this tier and ratio status
+        optimal_quotas = self.get_optimal_quotas_for_tier(
+            tier=tier,
+            ratio_status=ratio_info["status"],
+        )
+
+        changes_made = []
+
+        # Only apply quotas if they're more conservative than current settings
+        # This prevents increasing beyond user's original intent
+        if strategy.daily_follows > optimal_quotas["daily_follows"]:
+            strategy.daily_follows = optimal_quotas["daily_follows"]
+            changes_made.append(f"daily_follows: {optimal_quotas['daily_follows']}")
+
+        if strategy.daily_replies > optimal_quotas["daily_replies"]:
+            strategy.daily_replies = optimal_quotas["daily_replies"]
+            changes_made.append(f"daily_replies: {optimal_quotas['daily_replies']}")
+
+        if strategy.daily_posts > optimal_quotas["daily_posts"]:
+            strategy.daily_posts = optimal_quotas["daily_posts"]
+            changes_made.append(f"daily_posts: {optimal_quotas['daily_posts']}")
+
+        if changes_made:
+            await self.db.flush()
+            logger.info(
+                "Applied tier-based quotas",
+                strategy_id=str(strategy.id),
+                tier=tier,
+                ratio_status=ratio_info["status"],
+                changes=changes_made,
+            )
+
+        return {
+            "tier": tier,
+            "ratio_status": ratio_info["status"],
+            "optimal_quotas": optimal_quotas,
+            "changes_applied": changes_made,
+            "focus": optimal_quotas.get("focus", ""),
+        }
+
+    def check_spam_limits(
+        self,
+        actions_this_hour: dict,
+    ) -> dict:
+        """Check if current activity is within spam-safe limits.
+
+        Based on algorithm research:
+        - >50 follows/hour triggers suppression
+        - >30 unfollows/hour triggers penalty
+        - Exact timing intervals flagged as bot behavior
+
+        Args:
+            actions_this_hour: Dict of action counts this hour
+
+        Returns:
+            Dict with limit status and warnings
+        """
+        warnings = []
+        is_safe = True
+
+        for action, limit in self.SPAM_LIMITS.items():
+            count = actions_this_hour.get(action.replace("_per_hour", "s"), 0)
+            if count >= limit:
+                is_safe = False
+                warnings.append(f"{action}: {count}/{limit} - LIMIT REACHED")
+            elif count >= limit * 0.8:
+                warnings.append(f"{action}: {count}/{limit} - approaching limit")
+
+        return {
+            "is_safe": is_safe,
+            "warnings": warnings,
+            "limits": self.SPAM_LIMITS,
+            "current": actions_this_hour,
+        }
+
+    # ========== Circle 1 Nurturing ==========
+
+    async def update_circle1_members(
+        self,
+        strategy: GrowthStrategy,
+        twitter_service: "TwitterService",
+        access_token: str,
+        limit: int = 50,
+    ) -> list[Circle1Member]:
+        """Update Circle 1 members based on engagement patterns.
+
+        Circle 1 = mutual follows + frequent engagement (highest trust)
+        - Identifies top 50 mutual engagers
+        - Tracks engagement sent/received
+        - Ensures weekly touchpoints
+
+        Args:
+            strategy: The growth strategy
+            twitter_service: Twitter service instance
+            access_token: Valid access token
+            limit: Maximum Circle 1 members to track (default 50)
+
+        Returns:
+            List of Circle1Member records
+        """
+        # Get our followers and following
+        current_user = await twitter_service.get_current_user(access_token)
+        our_user_id = current_user["data"]["id"]
+
+        # Analyze engagement logs to find top engagers
+        # Get users we've engaged with most
+        stmt = select(
+            EngagementLog.twitter_username,
+            EngagementLog.twitter_user_id,
+            func.count(EngagementLog.id).label("engagement_count"),
+        ).where(
+            EngagementLog.strategy_id == strategy.id,
+            EngagementLog.success == True,
+            EngagementLog.twitter_username.isnot(None),
+        ).group_by(
+            EngagementLog.twitter_username,
+            EngagementLog.twitter_user_id,
+        ).order_by(
+            func.count(EngagementLog.id).desc()
+        ).limit(100)
+
+        result = await self.db.execute(stmt)
+        engagement_data = result.all()
+
+        updated_members = []
+
+        for row in engagement_data:
+            username = row.twitter_username
+            user_id = row.twitter_user_id
+            engagements_sent = row.engagement_count
+
+            if not username:
+                continue
+
+            # Check if already in Circle 1
+            existing_stmt = select(Circle1Member).where(
+                Circle1Member.strategy_id == strategy.id,
+                Circle1Member.twitter_username == username,
+            )
+            existing_result = await self.db.execute(existing_stmt)
+            member = existing_result.scalar_one_or_none()
+
+            if member:
+                # Update existing member
+                member.total_engagements_sent = engagements_sent
+                member.last_engagement_at = datetime.now(timezone.utc)
+            else:
+                # Create new member
+                member = Circle1Member(
+                    strategy_id=strategy.id,
+                    twitter_user_id=user_id or "",
+                    twitter_username=username,
+                    total_engagements_sent=engagements_sent,
+                    last_engagement_at=datetime.now(timezone.utc),
+                )
+                self.db.add(member)
+
+            # Calculate Circle 1 score
+            member.calculate_circle1_score()
+            updated_members.append(member)
+
+            if len(updated_members) >= limit:
+                break
+
+        await self.db.flush()
+
+        logger.info(
+            "Circle 1 members updated",
+            strategy_id=str(strategy.id),
+            count=len(updated_members),
+        )
+
+        return updated_members
+
+    async def get_circle1_members_needing_touchpoint(
+        self,
+        strategy_id: UUID,
+        limit: int = 10,
+    ) -> list[Circle1Member]:
+        """Get Circle 1 members who need a touchpoint this week.
+
+        Args:
+            strategy_id: The strategy ID
+            limit: Maximum members to return
+
+        Returns:
+            List of Circle1Member needing engagement
+        """
+        # Get members who haven't had a touchpoint in 5+ days
+        five_days_ago = datetime.now(timezone.utc) - timedelta(days=5)
+
+        stmt = select(Circle1Member).where(
+            Circle1Member.strategy_id == strategy_id,
+            Circle1Member.is_active == True,
+            Circle1Member.touchpoints_this_week == 0,
+            (
+                Circle1Member.last_touchpoint_at.is_(None) |
+                (Circle1Member.last_touchpoint_at < five_days_ago)
+            ),
+        ).order_by(
+            Circle1Member.circle1_score.desc()
+        ).limit(limit)
+
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def record_circle1_touchpoint(
+        self,
+        strategy_id: UUID,
+        twitter_username: str,
+    ) -> Optional[Circle1Member]:
+        """Record a touchpoint with a Circle 1 member.
+
+        Args:
+            strategy_id: The strategy ID
+            twitter_username: The Twitter username
+
+        Returns:
+            Updated Circle1Member or None
+        """
+        stmt = select(Circle1Member).where(
+            Circle1Member.strategy_id == strategy_id,
+            Circle1Member.twitter_username == twitter_username,
+        )
+        result = await self.db.execute(stmt)
+        member = result.scalar_one_or_none()
+
+        if member:
+            member.record_touchpoint()
+            await self.db.flush()
+            logger.info(
+                "Circle 1 touchpoint recorded",
+                strategy_id=str(strategy_id),
+                username=twitter_username,
+            )
+
+        return member
+
+    async def reset_weekly_circle1_touchpoints(
+        self,
+        strategy_id: UUID,
+    ) -> int:
+        """Reset weekly touchpoint counters for all Circle 1 members.
+
+        Should be called weekly (e.g., every Monday at midnight).
+
+        Args:
+            strategy_id: The strategy ID
+
+        Returns:
+            Number of members reset
+        """
+        stmt = select(Circle1Member).where(
+            Circle1Member.strategy_id == strategy_id,
+            Circle1Member.is_active == True,
+        )
+        result = await self.db.execute(stmt)
+        members = result.scalars().all()
+
+        for member in members:
+            member.reset_weekly_touchpoints()
+
+        await self.db.flush()
+
+        logger.info(
+            "Circle 1 weekly touchpoints reset",
+            strategy_id=str(strategy_id),
+            count=len(members),
+        )
+
+        return len(members)
 
     # ========== Strategy Creation ==========
 
@@ -584,6 +1148,13 @@ Generate a comprehensive plan. Output ONLY valid JSON."""
     ) -> list[EngagementTarget]:
         """Find tweets to engage with (like, retweet, reply).
 
+        Uses smart targeting optimized for Twitter's algorithm:
+        - Sweet spot: 5-20 likes (high reply-back rate, less competition)
+        - Reply ratio: 15-40% indicates discussion-friendly content
+        - Recency: First 30 minutes is the golden engagement window
+        - This captures better conversation potential for the 75x multiplier
+        - Engagement distribution: 60% non-followers (expansion), 40% followers (nurture)
+
         Args:
             strategy: The growth strategy
             twitter_service: Twitter service instance
@@ -595,17 +1166,128 @@ Generate a comprehensive plan. Output ONLY valid JSON."""
         """
         targets = []
 
-        # Search for popular tweets in niche
+        # Calculate optimal engagement distribution
+        # 60% non-followers for expansion, 40% followers for nurturing
+        distribution = self.calculate_engagement_distribution(limit, follower_ratio=0.4)
+        follower_targets_limit = distribution["to_followers"]
+        non_follower_targets_limit = distribution["to_non_followers"]
+
+        logger.info(
+            "Engagement distribution",
+            strategy_id=str(strategy.id),
+            followers=follower_targets_limit,
+            non_followers=non_follower_targets_limit,
+        )
+
+        # First, try to get tweets from people who follow us (nurturing)
+        follower_targets = []
+        try:
+            # Get our user ID
+            current_user = await twitter_service.get_current_user(access_token)
+            our_user_id = current_user["data"]["id"]
+
+            # Get some of our followers' recent tweets (for nurturing)
+            followers_response = await twitter_service.get_followers(
+                access_token=access_token,
+                user_id=our_user_id,
+                max_results=30,
+            )
+
+            followers_data = followers_response.get("data", [])[:follower_targets_limit]
+
+            for follower in followers_data:
+                if len(follower_targets) >= follower_targets_limit:
+                    break
+
+                try:
+                    # Get recent tweet from this follower
+                    tweets = await twitter_service.get_user_tweets(
+                        access_token=access_token,
+                        user_id=follower.get("id"),
+                        max_results=3,
+                    )
+
+                    if tweets and len(tweets) > 0:
+                        tweet = tweets[0]
+                        tweet_id = tweet.get("id")
+
+                        # Check if already targeted
+                        existing = await self._get_target_by_tweet_id(strategy.id, tweet_id)
+                        if existing:
+                            continue
+
+                        metrics = tweet.get("metrics", {})
+                        target = EngagementTarget(
+                            strategy_id=strategy.id,
+                            target_type=TargetType.TWEET,
+                            tweet_id=tweet_id,
+                            tweet_author=follower.get("username"),
+                            tweet_author_id=follower.get("id"),
+                            tweet_content=tweet.get("text", "")[:500],
+                            tweet_like_count=metrics.get("like_count", 0),
+                            tweet_retweet_count=metrics.get("retweet_count", 0),
+                            should_like=True,
+                            should_retweet=False,
+                            should_reply=True,  # Engage more with followers
+                            status=EngagementStatus.PENDING,
+                            scheduled_for=self._get_next_engagement_slot(strategy),
+                            relevance_score=0.85,  # High relevance for followers
+                            priority=5,  # High priority
+                        )
+                        self.db.add(target)
+                        follower_targets.append(target)
+                        targets.append(target)
+
+                except Exception as e:
+                    logger.debug(f"Error getting tweets for follower: {e}")
+
+        except Exception as e:
+            logger.warning(f"Error getting follower tweets for nurturing: {e}")
+
+        # Now search for non-follower tweets (expansion) - 60% of targets
+        non_follower_targets = []
         for keyword in (strategy.niche_keywords or ["twitter growth"])[:3]:
             try:
-                tweets = await twitter_service.get_popular_tweets_about_topic(
+                # Check if we've reached the non-follower limit
+                if len(non_follower_targets) >= non_follower_targets_limit:
+                    break
+
+                # Get recent tweets (for recency factor)
+                recent_tweets = await twitter_service.search_recent_tweets(
+                    access_token=access_token,
+                    query=keyword,
+                    max_results=50,
+                    sort_order="recency",  # Fresh tweets for early engagement
+                )
+
+                # Also get some popular tweets
+                popular_tweets = await twitter_service.get_popular_tweets_about_topic(
                     access_token=access_token,
                     topic=keyword,
                     max_results=20,
                 )
 
-                for tweet in tweets:
-                    if len(targets) >= limit:
+                # Combine and dedupe
+                all_tweets = recent_tweets + popular_tweets
+                seen_ids = set()
+                unique_tweets = []
+                for tweet in all_tweets:
+                    if tweet.get("id") not in seen_ids:
+                        seen_ids.add(tweet.get("id"))
+                        unique_tweets.append(tweet)
+
+                # Score and sort tweets by conversation potential
+                scored_tweets = []
+                for tweet in unique_tweets:
+                    score = self._calculate_conversation_potential(tweet)
+                    scored_tweets.append((score, tweet))
+
+                # Sort by score descending (best opportunities first)
+                scored_tweets.sort(key=lambda x: x[0], reverse=True)
+
+                for score, tweet in scored_tweets:
+                    # Check against non-follower limit (not total limit)
+                    if len(non_follower_targets) >= non_follower_targets_limit:
                         break
 
                     tweet_id = tweet.get("id")
@@ -617,24 +1299,36 @@ Generate a comprehensive plan. Output ONLY valid JSON."""
                     if existing:
                         continue
 
-                    # Determine actions based on engagement metrics
+                    # Get engagement metrics
                     metrics = tweet.get("metrics", {})
                     like_count = metrics.get("like_count", 0)
                     retweet_count = metrics.get("retweet_count", 0)
+                    reply_count = metrics.get("reply_count", 0)
 
+                    # Smart targeting decisions
+                    # Like everything (low cost, high signal to algorithm)
                     should_like = True
-                    should_retweet = like_count > 100 and retweet_count > 20  # Only RT popular tweets
-                    should_reply = like_count > 50  # Reply to moderately popular tweets
 
-                    # Calculate relevance score
-                    engagement_score = (like_count + retweet_count * 3) / 1000
-                    relevance = min(0.9, 0.5 + engagement_score)
+                    # Retweet: Only RT content with good engagement but not saturated
+                    # Sweet spot: 20-100 likes (good content, not too crowded)
+                    should_retweet = 20 <= like_count <= 100 and retweet_count >= 5
+
+                    # Reply: Prioritize the conversation potential sweet spot
+                    # 5-50 likes = best reply-back rate (authors more likely to engage)
+                    # Also require low reply ratio = less competition
+                    reply_ratio = reply_count / max(like_count, 1)
+                    should_reply = (
+                        5 <= like_count <= 50 and  # Sweet spot for engagement
+                        reply_ratio < 0.4 and  # Not too many replies (less competition)
+                        score >= 0.5  # Only reply to high-potential conversations
+                    )
 
                     target = EngagementTarget(
                         strategy_id=strategy.id,
                         target_type=TargetType.TWEET,
                         tweet_id=tweet_id,
                         tweet_author=tweet.get("author_username"),
+                        tweet_author_id=tweet.get("author_id"),
                         tweet_content=tweet.get("text", "")[:500],
                         tweet_like_count=like_count,
                         tweet_retweet_count=retweet_count,
@@ -643,10 +1337,11 @@ Generate a comprehensive plan. Output ONLY valid JSON."""
                         should_reply=should_reply,
                         status=EngagementStatus.PENDING,
                         scheduled_for=self._get_next_engagement_slot(strategy),
-                        relevance_score=relevance,
-                        priority=len(targets),
+                        relevance_score=score,  # Use conversation potential as relevance
+                        priority=int(score * 100),  # Higher score = higher priority
                     )
                     self.db.add(target)
+                    non_follower_targets.append(target)
                     targets.append(target)
 
             except Exception as e:
@@ -659,12 +1354,109 @@ Generate a comprehensive plan. Output ONLY valid JSON."""
         await self.db.flush()
 
         logger.info(
-            "Found engagement tweets",
+            "Found engagement tweets with smart targeting and distribution",
             strategy_id=str(strategy.id),
-            count=len(targets),
+            total=len(targets),
+            follower_targets=len(follower_targets),
+            non_follower_targets=len(non_follower_targets),
+            distribution_actual=f"{len(follower_targets)}/{len(non_follower_targets)}",
+            distribution_target=f"{follower_targets_limit}/{non_follower_targets_limit}",
+            reply_targets=sum(1 for t in targets if t.should_reply),
         )
 
         return targets
+
+    def _calculate_conversation_potential(self, tweet: dict) -> float:
+        """Calculate conversation potential score for a tweet.
+
+        This algorithm optimizes for the 75x reply-to-reply multiplier by
+        identifying tweets where the author is most likely to engage back.
+
+        Score factors (0-1 scale):
+        - Optimal engagement size (30%): 5-20 likes is sweet spot
+        - Reply ratio (25%): 15-40% indicates discussion-friendly
+        - Recency (25%): First 30 minutes is golden window
+        - Author engagement potential (20%): Mid-tier followers more responsive
+
+        Args:
+            tweet: Tweet data dict with metrics
+
+        Returns:
+            Score between 0.0 and 1.0
+        """
+        score = 0.0
+        metrics = tweet.get("metrics", {})
+        like_count = metrics.get("like_count", 0)
+        reply_count = metrics.get("reply_count", 0)
+        retweet_count = metrics.get("retweet_count", 0)
+
+        # 1. Optimal engagement size factor (30%)
+        # Sweet spot: 5-20 likes - enough signal it's good content,
+        # but not so popular that author is overwhelmed
+        if 5 <= like_count <= 20:
+            size_factor = 1.0  # Perfect range
+        elif 3 <= like_count < 5:
+            size_factor = 0.8  # Good but might be too early
+        elif 20 < like_count <= 50:
+            size_factor = 0.7  # Still decent, more competition
+        elif 50 < like_count <= 100:
+            size_factor = 0.5  # Getting crowded
+        elif like_count > 100:
+            size_factor = 0.3  # Too popular, low reply-back rate
+        else:
+            size_factor = 0.4  # Very new tweet (< 3 likes)
+        score += size_factor * 0.30
+
+        # 2. Reply ratio factor (25%)
+        # 15-40% reply ratio indicates discussion-friendly content
+        reply_ratio = reply_count / max(like_count, 1)
+        if 0.15 <= reply_ratio <= 0.40:
+            ratio_factor = 1.0  # Optimal discussion ratio
+        elif 0.05 <= reply_ratio < 0.15:
+            ratio_factor = 0.7  # Low replies = might not engage
+        elif 0.40 < reply_ratio <= 0.60:
+            ratio_factor = 0.6  # High competition
+        elif reply_ratio > 0.60:
+            ratio_factor = 0.3  # Very crowded
+        else:
+            ratio_factor = 0.5  # No replies yet
+        score += ratio_factor * 0.25
+
+        # 3. Recency factor (25%)
+        # Try to parse created_at - tweets in first 30 min are golden
+        recency_factor = 0.5  # Default if we can't parse
+        created_at = tweet.get("created_at")
+        if created_at:
+            try:
+                tweet_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                age_minutes = (datetime.now(timezone.utc) - tweet_time).total_seconds() / 60
+
+                if age_minutes <= 30:
+                    recency_factor = 1.0  # Golden window
+                elif age_minutes <= 60:
+                    recency_factor = 0.8  # Still fresh
+                elif age_minutes <= 120:
+                    recency_factor = 0.6  # Decent
+                elif age_minutes <= 360:  # 6 hours
+                    recency_factor = 0.4
+                else:
+                    recency_factor = 0.2  # Old tweet
+            except Exception:
+                pass
+        score += recency_factor * 0.25
+
+        # 4. Author engagement potential (20%)
+        # We don't always have follower counts, so use what we have
+        author_verified = tweet.get("author_verified", False)
+        if author_verified:
+            # Verified accounts less likely to reply to randoms
+            author_factor = 0.3
+        else:
+            # Non-verified more likely to engage
+            author_factor = 0.7
+        score += author_factor * 0.20
+
+        return min(score, 1.0)
 
     async def generate_reply_content(
         self,
@@ -776,6 +1568,544 @@ Output ONLY the reply text, nothing else."""
             )
 
             return reply
+
+        finally:
+            await deepseek.close()
+
+    async def generate_conversation_reply(
+        self,
+        thread: "ConversationThread",
+        strategy: GrowthStrategy,
+        conversation_context: str,
+        api_key: str,
+    ) -> str:
+        """Generate AI reply content for a conversation continuation.
+
+        This method generates contextually appropriate replies for ongoing
+        conversations, maintaining coherence across multiple turns to capture
+        the 75x algorithmic multiplier from reply-to-reply interactions.
+
+        Args:
+            thread: The conversation thread
+            strategy: The growth strategy
+            conversation_context: Formatted string of the full conversation
+            api_key: DeepSeek API key
+
+        Returns:
+            Generated reply text
+        """
+        from app.models.user import User
+        from app.models.growth_strategy import ConversationThread
+
+        deepseek = DeepSeekService(api_key)
+
+        try:
+            # Fetch user's default prompt template
+            user_stmt = select(User).where(User.id == strategy.user_id)
+            user_result = await self.db.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+            user_default_prompt = user.default_prompt_template if user else None
+
+            # Build system prompt for conversation continuation
+            base_system = """You are a thoughtful Twitter user continuing an engaging conversation.
+
+CRITICAL REQUIREMENTS:
+1. Maintain conversation coherence - reference what was said before
+2. Be natural and conversational - this is a real dialogue, not a one-off reply
+3. Add value - share insights, ask thoughtful follow-up questions, or build on their points
+4. Keep it under 280 characters
+5. Sound human, not robotic or generic
+6. Know when to naturally wrap up - if the conversation has reached a natural conclusion, write something that ends it gracefully
+7. NEVER repeat what you've already said in the conversation
+
+CONVERSATION DYNAMICS:
+- If they asked a question, answer it directly then add your own thought
+- If they shared an opinion, engage with it genuinely
+- If they shared information, acknowledge it and add perspective
+- If they're being friendly, be warm back
+- If the conversation is winding down, don't force it to continue"""
+
+            # Add user/strategy customizations
+            if user_default_prompt:
+                system_prompt = f"""{base_system}
+
+USER'S VOICE & STYLE:
+{user_default_prompt}"""
+            elif strategy.custom_prompt:
+                system_prompt = f"""{base_system}
+
+VOICE & STYLE GUIDELINES:
+{strategy.custom_prompt}"""
+            else:
+                system_prompt = base_system
+
+            # Build the user prompt with full conversation context
+            user_prompt = f"""Continue this Twitter conversation naturally.
+
+FULL CONVERSATION:
+{conversation_context}
+
+CONTEXT:
+- Niche/Topics: {', '.join(strategy.niche_keywords or ['general topics'])}
+- Conversation depth: {thread.depth} turns so far
+- Max depth: {thread.max_depth} (we want meaningful engagement, not spam)
+
+Write your next reply. Output ONLY the reply text, nothing else. Keep it under 280 characters."""
+
+            response = await deepseek._call_api(system_prompt, user_prompt)
+            reply = response.strip()
+
+            # Clean up
+            if reply.startswith('"') and reply.endswith('"'):
+                reply = reply[1:-1]
+
+            # Ensure under character limit
+            if len(reply) > strategy.tweet_char_limit:
+                reply = reply[:strategy.tweet_char_limit - 3] + "..."
+
+            logger.info(
+                "Conversation reply generated",
+                thread_id=str(thread.id),
+                depth=thread.depth,
+                reply_length=len(reply),
+            )
+
+            return reply
+
+        finally:
+            await deepseek.close()
+
+    async def _fetch_trending_topics(
+        self,
+        strategy: GrowthStrategy,
+    ) -> list[dict]:
+        """Fetch trending cannabis topics using Tavily API.
+
+        Returns list of dicts with 'title' and 'summary' keys.
+        Caches results for 6 hours to reduce API calls.
+        """
+        from datetime import timedelta
+
+        # Check cache first
+        cache_valid = False
+        if strategy.trending_topics_cache and strategy.trending_topics_updated_at:
+            cache_age = datetime.now(timezone.utc) - strategy.trending_topics_updated_at
+            if cache_age < timedelta(hours=6):
+                cache_valid = True
+                logger.info(
+                    "Using cached trending topics",
+                    strategy_id=str(strategy.id),
+                    cache_age_hours=cache_age.total_seconds() / 3600,
+                )
+                return strategy.trending_topics_cache.get('topics', [])
+
+        # Fetch fresh topics using Tavily
+        try:
+            user_service = UserService(self.db)
+            tavily_key = await user_service.get_decrypted_api_key(
+                strategy.user_id, APIKeyType.TAVILY
+            )
+
+            if not tavily_key:
+                logger.warning("No Tavily API key for trending topics")
+                return []
+
+            web_search = WebSearchService(tavily_key)
+            try:
+                # Search for recent cannabis news
+                results = await web_search.search_news(
+                    query="cannabis marijuana weed legalization policy news",
+                    max_results=10,
+                    days=3,  # Last 3 days
+                )
+
+                # Format results
+                topics = []
+                for r in results:
+                    topics.append({
+                        'title': r.title[:100],
+                        'summary': r.content[:200] if r.content else '',
+                        'url': r.url,
+                    })
+
+                # Update cache
+                strategy.trending_topics_cache = {'topics': topics}
+                strategy.trending_topics_updated_at = datetime.now(timezone.utc)
+                await self.db.commit()
+
+                logger.info(
+                    "Fetched fresh trending topics",
+                    strategy_id=str(strategy.id),
+                    topics_count=len(topics),
+                )
+
+                return topics
+
+            finally:
+                await web_search.close()
+
+        except Exception as e:
+            logger.error(
+                "Error fetching trending topics",
+                strategy_id=str(strategy.id),
+                error=str(e),
+            )
+            # Return cached if available, else empty
+            if strategy.trending_topics_cache:
+                return strategy.trending_topics_cache.get('topics', [])
+            return []
+
+    async def generate_post_content(
+        self,
+        strategy: GrowthStrategy,
+        api_key: str,
+        include_image: bool = True,
+    ) -> dict:
+        """Generate original post content for the strategy with optional image.
+
+        Args:
+            strategy: The growth strategy
+            api_key: DeepSeek API key
+            include_image: Whether to generate an accompanying image
+
+        Returns:
+            Dict with 'text' (str), 'image_bytes' (Optional[bytes]), 'image_alt_text' (Optional[str])
+        """
+        import httpx
+        from datetime import timedelta
+        from app.models.user import User
+        from app.models.growth_strategy import EngagementLog
+
+        deepseek = DeepSeekService(api_key)
+
+        try:
+            # Fetch user's default prompt template
+            user_stmt = select(User).where(User.id == strategy.user_id)
+            user_result = await self.db.execute(user_stmt)
+            user = user_result.scalar_one_or_none()
+            user_default_prompt = user.default_prompt_template if user else None
+
+            # Check if trending topics mode is enabled
+            trending_topics_data = None
+            if getattr(strategy, 'use_trending_topics', False):
+                trending_topics_data = await self._fetch_trending_topics(strategy)
+
+            # Check if this is a cannabis/cannapedia account - fetch real strain data
+            # Skip strain data if trending topics mode is enabled and has data
+            strain_data = None
+            niche_keywords = strategy.niche_keywords or []
+            is_cannabis_niche = any(kw.lower() in ['cannabis', 'marijuana', 'weed', 'cbd', 'hemp', '420']
+                                   for kw in niche_keywords)
+
+            if is_cannabis_niche and not trending_topics_data:
+                # Get recent posts to avoid duplicates (last 24 hours)
+                recent_posts_stmt = select(EngagementLog).where(
+                    EngagementLog.strategy_id == strategy.id,
+                    EngagementLog.action_type == ActionType.POST,
+                    EngagementLog.success == True,
+                    EngagementLog.created_at >= datetime.now(timezone.utc) - timedelta(hours=24),
+                ).order_by(EngagementLog.created_at.desc())
+
+                recent_posts_result = await self.db.execute(recent_posts_stmt)
+                recent_posts = list(recent_posts_result.scalars().all())
+
+                # Extract strain names from recent posts
+                recent_strain_names = set()
+                for post in recent_posts:
+                    if post.reply_content:
+                        # Extract first line which usually contains strain name
+                        first_line = post.reply_content.split('\n')[0].lower()
+                        recent_strain_names.add(first_line)
+
+                logger.info(
+                    "Checking for duplicate strains",
+                    recent_count=len(recent_posts),
+                    recent_strains=list(recent_strain_names)[:5],
+                )
+
+                # Try to fetch a unique strain (max 5 attempts)
+                max_attempts = 5
+                for attempt in range(max_attempts):
+                    try:
+                        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                            # Use /api/strains/random/ endpoint for truly random strain
+                            random_response = await client.get("https://cannapedia.ai/api/strains/random/")
+
+                            if random_response.status_code == 200:
+                                strain_data = random_response.json()
+                                strain_name = strain_data.get("name", "").lower()
+
+                                # Check if this strain was recently posted
+                                is_duplicate = False
+                                for recent_strain in recent_strain_names:
+                                    if strain_name in recent_strain or recent_strain in strain_name:
+                                        is_duplicate = True
+                                        break
+
+                                if is_duplicate:
+                                    logger.warning(
+                                        f"Strain '{strain_data.get('name')}' was recently posted, trying another (attempt {attempt + 1}/{max_attempts})"
+                                    )
+                                    strain_data = None
+                                    continue
+
+                                logger.info(
+                                    "Fetched random strain from cannapedia.ai",
+                                    strain=strain_data.get("name"),
+                                    attempt=attempt + 1,
+                                )
+                                break
+                            else:
+                                logger.warning(f"Random strain API returned {random_response.status_code}")
+
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch strain data (attempt {attempt + 1}): {e}")
+
+                if not strain_data:
+                    logger.error("Could not fetch unique strain after all attempts")
+                    return None
+
+            # Build system prompt
+            if user_default_prompt:
+                base_system = user_default_prompt
+                if strategy.custom_prompt:
+                    system_prompt = f"""{base_system}
+
+ADDITIONAL STRATEGY-SPECIFIC INSTRUCTIONS:
+{strategy.custom_prompt}"""
+                else:
+                    system_prompt = base_system
+            elif strategy.custom_prompt:
+                system_prompt = f"""You are a Twitter content creator. Create engaging, authentic posts.
+
+IMPORTANT - Follow these specific instructions from the user:
+{strategy.custom_prompt}"""
+            else:
+                system_prompt = """You are a Twitter content creator focused on building an engaged audience.
+
+Create posts that:
+1. Are authentic and conversational
+2. Provide value (insights, tips, perspectives)
+3. Spark engagement and conversation
+4. Fit naturally in the niche
+5. Are under 280 characters unless the account has verification"""
+
+            niche = ', '.join(niche_keywords or ['general topics'])
+
+            # If we have strain data, include it in the prompt
+            if strain_data:
+                # Extract effects with intensities
+                effects_list = strain_data.get('effects', [])
+                positive_effects = [f"{e['effect']['name']} ({e['intensity']}%)"
+                                   for e in effects_list
+                                   if e.get('effect', {}).get('category') == 'positive'][:4]
+                effects_str = ', '.join(positive_effects) if positive_effects else 'Unknown'
+
+                # Extract flavors
+                flavors_list = strain_data.get('flavors', [])
+                flavors_str = ', '.join([f['name'] for f in flavors_list][:4]) if flavors_list else 'Unknown'
+
+                # Extract terpenes
+                terpenes_list = strain_data.get('terpenes', [])
+                terpenes_str = ', '.join([t.get('terpene', {}).get('name', t.get('name', '')) for t in terpenes_list][:3]) if terpenes_list else ''
+
+                # Extract parent strains
+                parents_list = strain_data.get('parent_strains', [])
+                parents_str = ' x '.join([p.get('name', '') for p in parents_list]) if parents_list else 'Unknown lineage'
+
+                # Store strain name for logging/verification
+                fetched_strain_name = strain_data.get('name', 'Unknown')
+
+                user_prompt = f"""Create an original tweet about the cannabis strain "{fetched_strain_name}".
+
+===== REAL STRAIN DATA (USE ONLY THIS DATA) =====
+Strain Name: {fetched_strain_name}
+Type: {strain_data.get('category', 'Unknown').title()}
+THC Level: {strain_data.get('thc_display', 'Unknown')}
+CBD Level: {strain_data.get('cbd_display', 'Unknown') or 'Low'}
+Top Effects: {effects_str}
+Flavors/Aromas: {flavors_str}
+Genetics/Parents: {parents_str}
+{f"Terpenes: {terpenes_str}" if terpenes_str else ""}
+=================================================
+
+CRITICAL RULES:
+1. The tweet MUST be about "{fetched_strain_name}" - this is the strain you are posting about
+2. Use ONLY the real data provided above - do NOT use any example strains from your instructions
+3. Do NOT copy or modify any example tweets from your instructions
+4. Do NOT include any URLs or links
+5. Start the tweet with the strain name "{fetched_strain_name}"
+
+Character limit: {strategy.tweet_char_limit}
+
+Output ONLY the tweet text for "{fetched_strain_name}", nothing else. No quotes."""
+
+                logger.info(
+                    "Generating post for strain",
+                    strain_name=fetched_strain_name,
+                    thc=strain_data.get('thc_display'),
+                    effects=effects_str[:50],
+                )
+            elif trending_topics_data:
+                # Use trending topics for post generation
+                topics_text = "\n".join([f"- {t['title']}: {t['summary']}" for t in trending_topics_data[:5]])
+
+                user_prompt = f"""Create an original tweet reacting to one of these trending cannabis topics:
+
+===== TRENDING CANNABIS NEWS =====
+{topics_text}
+==================================
+
+RULES:
+1. Pick ONE topic and give your hot take or reaction
+2. Be authentic and opinionated - this is YOUR voice
+3. Keep it under {strategy.tweet_char_limit} characters
+4. Don't just report the news - react to it with personality
+5. No URLs or links
+6. 1-2 hashtags max if relevant
+
+Output ONLY the tweet text, nothing else."""
+
+                logger.info(
+                    "Generating trending topics post",
+                    strategy_id=str(strategy.id),
+                    topics_count=len(trending_topics_data),
+                )
+            else:
+                user_prompt = f"""Create an original tweet for a {niche} account.
+
+Character limit: {strategy.tweet_char_limit}
+
+IMPORTANT: Do NOT include any URLs or links in the tweet.
+
+Output ONLY the tweet text, nothing else. No quotes around it."""
+
+            response = await deepseek._call_api(system_prompt, user_prompt)
+            post = response.strip()
+
+            # Clean up
+            if post.startswith('"') and post.endswith('"'):
+                post = post[1:-1]
+
+            # Ensure under character limit
+            if len(post) > strategy.tweet_char_limit:
+                post = post[:strategy.tweet_char_limit - 3] + "..."
+
+            # Validate that post contains the correct strain name (for cannabis posts)
+            if strain_data:
+                fetched_name = strain_data.get('name', '').lower()
+                post_lower = post.lower()
+
+                # Check if the strain name appears in the post
+                if fetched_name not in post_lower:
+                    logger.error(
+                        "Generated post does not contain the fetched strain name!",
+                        expected_strain=fetched_name,
+                        post_preview=post[:100],
+                    )
+                    # Return None to indicate failure - don't post wrong content
+                    return None
+
+                logger.info(
+                    "Post generated and validated",
+                    strategy_id=str(strategy.id),
+                    strain_name=fetched_name,
+                    post_length=len(post),
+                )
+            else:
+                logger.info(
+                    "Post generated",
+                    strategy_id=str(strategy.id),
+                    post_length=len(post),
+                )
+
+            # Generate image if requested
+            image_bytes = None
+            image_alt_text = None
+
+            if include_image:
+                try:
+                    from app.services.stability import StabilityAIService, StabilityAIError
+                    from app.core.config import settings
+
+                    if settings.stability_api_key:
+                        stability = StabilityAIService()
+                        try:
+                            if is_cannabis_niche and strain_data:
+                                # Generate cannabis-specific image
+                                strain_name = strain_data.get('name', 'cannabis')
+                                strain_type = strain_data.get('category', 'hybrid').title()
+
+                                # Build a descriptive prompt for the strain
+                                image_prompt = (
+                                    f"Professional cannabis photography of {strain_name} strain, "
+                                    f"beautiful {strain_type.lower()} marijuana buds, "
+                                    "macro close-up showing trichomes and crystals, "
+                                    "vibrant colors, studio lighting, botanical style, "
+                                    "high detail, sharp focus"
+                                )
+
+                                negative_prompt = (
+                                    "text, watermark, logo, low quality, blurry, "
+                                    "distorted, deformed, human, hands, smoking"
+                                )
+
+                                logger.info(
+                                    "Generating image for strain post",
+                                    strain=strain_name,
+                                )
+
+                                image_bytes = await stability.generate_image(
+                                    prompt=image_prompt,
+                                    negative_prompt=negative_prompt,
+                                    width=1024,
+                                    height=576,  # 16:9 for Twitter
+                                    style_preset="photographic",
+                                )
+
+                                # Optimize for Twitter
+                                image_bytes = stability.optimize_image_for_twitter(image_bytes)
+
+                                image_alt_text = f"Cannabis strain {strain_name} - {strain_type}"
+
+                                logger.info(
+                                    "Image generated successfully",
+                                    strain=strain_name,
+                                    image_size=len(image_bytes),
+                                )
+                            else:
+                                # Generate generic niche image
+                                niche = ', '.join(niche_keywords[:2]) if niche_keywords else 'lifestyle'
+                                image_bytes = await stability.generate_for_tweet(
+                                    topic=post[:100],
+                                    niche=niche,
+                                    style="photographic",
+                                )
+                                image_bytes = stability.optimize_image_for_twitter(image_bytes)
+                                image_alt_text = f"Image for {niche} content"
+
+                        finally:
+                            await stability.close()
+                    else:
+                        logger.debug("Stability API key not configured, skipping image generation")
+
+                except StabilityAIError as e:
+                    # Log but don't fail - post without image
+                    logger.warning(
+                        "Image generation failed, posting without image",
+                        error=str(e),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Unexpected error in image generation",
+                        error=str(e),
+                    )
+
+            return {
+                "text": post,
+                "image_bytes": image_bytes,
+                "image_alt_text": image_alt_text,
+            }
 
         finally:
             await deepseek.close()
@@ -984,6 +2314,9 @@ Output ONLY the reply text, nothing else."""
         # Calculate days elapsed
         days_elapsed = strategy.duration_days - strategy.days_remaining
 
+        # Get conversation stats
+        conversation_stats = await self.get_conversation_stats(strategy_id)
+
         return {
             "strategy_id": str(strategy_id),
             "status": strategy.status.value,
@@ -1008,7 +2341,98 @@ Output ONLY the reply text, nothing else."""
                 }
                 for p in daily_progress
             ],
+            "conversations": conversation_stats,
         }
+
+    async def get_conversation_stats(
+        self,
+        strategy_id: UUID,
+    ) -> dict[str, Any]:
+        """Get conversation thread statistics for a strategy."""
+        from sqlalchemy import func
+
+        # Count threads by status
+        status_counts = {}
+        for status in ConversationStatus:
+            stmt = select(func.count(ConversationThread.id)).where(
+                ConversationThread.strategy_id == strategy_id,
+                ConversationThread.status == status,
+            )
+            result = await self.db.execute(stmt)
+            status_counts[status.value] = result.scalar() or 0
+
+        total_threads = sum(status_counts.values())
+
+        # Count total replies received (not from us)
+        stmt = select(func.count(ConversationReply.id)).where(
+            ConversationReply.thread_id.in_(
+                select(ConversationThread.id).where(
+                    ConversationThread.strategy_id == strategy_id
+                )
+            ),
+            ConversationReply.is_from_us == False,
+        )
+        result = await self.db.execute(stmt)
+        replies_received = result.scalar() or 0
+
+        # Count our responses (replies from us, excluding initial)
+        stmt = select(func.count(ConversationReply.id)).where(
+            ConversationReply.thread_id.in_(
+                select(ConversationThread.id).where(
+                    ConversationThread.strategy_id == strategy_id
+                )
+            ),
+            ConversationReply.is_from_us == True,
+        )
+        result = await self.db.execute(stmt)
+        our_responses = result.scalar() or 0
+
+        # Get threads that led to follows
+        stmt = select(func.count(ConversationThread.id)).where(
+            ConversationThread.strategy_id == strategy_id,
+            ConversationThread.led_to_follow == True,
+        )
+        result = await self.db.execute(stmt)
+        led_to_follows = result.scalar() or 0
+
+        # Get average conversation depth
+        stmt = select(func.avg(ConversationThread.depth)).where(
+            ConversationThread.strategy_id == strategy_id,
+            ConversationThread.depth > 0,
+        )
+        result = await self.db.execute(stmt)
+        avg_depth = result.scalar() or 0
+
+        return {
+            "total_threads": total_threads,
+            "active_threads": status_counts.get("active", 0),
+            "completed_threads": status_counts.get("completed", 0),
+            "paused_threads": status_counts.get("paused", 0),
+            "replies_received": replies_received,
+            "our_responses": our_responses,
+            "led_to_follows": led_to_follows,
+            "avg_depth": round(float(avg_depth), 1) if avg_depth else 0,
+            "reply_rate": round(replies_received / total_threads * 100, 1) if total_threads > 0 else 0,
+        }
+
+    async def get_conversation_threads(
+        self,
+        strategy_id: UUID,
+        status: Optional[ConversationStatus] = None,
+        limit: int = 50,
+    ) -> list[ConversationThread]:
+        """Get conversation threads for a strategy."""
+        stmt = select(ConversationThread).where(
+            ConversationThread.strategy_id == strategy_id,
+        )
+
+        if status:
+            stmt = stmt.where(ConversationThread.status == status)
+
+        stmt = stmt.order_by(ConversationThread.created_at.desc()).limit(limit)
+
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
     async def log_engagement(
         self,

@@ -1,12 +1,21 @@
 """Dashboard routes."""
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser
 from app.core.database import get_db
+from app.models.growth_strategy import (
+    EngagementLog,
+    GrowthStrategy,
+    StrategyStatus,
+)
 from app.models.tweet import TweetStatus
+from app.services.growth_strategy import GrowthStrategyService
 from app.services.tweet import TweetService
 from app.services.twitter import TwitterService
 
@@ -51,6 +60,63 @@ async def dashboard(
     twitter_service = TwitterService(db)
     twitter_account = await twitter_service.get_oauth_account(user.id)
 
+    # Get growth strategy data
+    growth_service = GrowthStrategyService(db)
+    try:
+        strategies = await growth_service.get_user_strategies(user.id)
+    except Exception as e:
+        strategies = []
+        print(f"Error loading strategies: {e}")
+
+    # Calculate aggregate growth metrics
+    growth_stats = {
+        "total_strategies": len(strategies),
+        "active_strategies": sum(1 for s in strategies if s.status == StrategyStatus.ACTIVE),
+        "total_followers_gained": sum(s.followers_gained for s in strategies),
+        "total_engagements": sum(
+            s.total_follows + s.total_likes + s.total_retweets + s.total_replies + s.total_posts
+            for s in strategies
+        ),
+        "total_follows": sum(s.total_follows for s in strategies),
+        "total_likes": sum(s.total_likes for s in strategies),
+        "total_replies": sum(s.total_replies for s in strategies),
+        "total_posts": sum(s.total_posts for s in strategies),
+    }
+
+    # Get active strategy details
+    active_strategy = next((s for s in strategies if s.status == StrategyStatus.ACTIVE), None)
+
+    # Get recent engagements (last 24 hours)
+    yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent_engagements_stmt = (
+        select(EngagementLog)
+        .join(GrowthStrategy)
+        .where(
+            GrowthStrategy.user_id == user.id,
+            EngagementLog.created_at >= yesterday,
+        )
+        .order_by(EngagementLog.created_at.desc())
+        .limit(10)
+    )
+    result = await db.execute(recent_engagements_stmt)
+    recent_engagements = list(result.scalars().all())
+
+    # Count engagements by type in last 24h
+    engagement_counts_stmt = (
+        select(
+            EngagementLog.engagement_type,
+            func.count(EngagementLog.id).label("count"),
+        )
+        .join(GrowthStrategy)
+        .where(
+            GrowthStrategy.user_id == user.id,
+            EngagementLog.created_at >= yesterday,
+        )
+        .group_by(EngagementLog.engagement_type)
+    )
+    result = await db.execute(engagement_counts_stmt)
+    engagement_counts = {row.engagement_type.value: row.count for row in result.all()}
+
     return templates.TemplateResponse(
         "dashboard/index.html",
         {
@@ -61,6 +127,11 @@ async def dashboard(
             "posted_tweets": posted_tweets,
             "failed_tweets": failed_tweets,
             "twitter_account": twitter_account,
+            "growth_stats": growth_stats,
+            "active_strategy": active_strategy,
+            "strategies": strategies,
+            "recent_engagements": recent_engagements,
+            "engagement_counts": engagement_counts,
         },
     )
 

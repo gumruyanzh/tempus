@@ -1679,80 +1679,166 @@ Write your next reply. Output ONLY the reply text, nothing else. Keep it under 2
         self,
         strategy: GrowthStrategy,
     ) -> list[dict]:
-        """Fetch trending cannabis topics using Tavily API.
+        """Fetch viral cannabis tweets from Twitter to remix.
 
-        Returns list of dicts with 'title' and 'summary' keys.
-        Caches results for 6 hours to reduce API calls.
+        Searches Twitter for popular cannabis/weed tweets with good engagement,
+        tracks which tweets have been used, and returns one unused tweet to remix.
+        Caches tweets for 2 hours to avoid rate limits.
         """
+        import random
         from datetime import timedelta
 
-        # Check cache first
-        cache_valid = False
-        if strategy.trending_topics_cache and strategy.trending_topics_updated_at:
-            cache_age = datetime.now(timezone.utc) - strategy.trending_topics_updated_at
-            if cache_age < timedelta(hours=6):
-                cache_valid = True
-                logger.info(
-                    "Using cached trending topics",
-                    strategy_id=str(strategy.id),
-                    cache_age_hours=cache_age.total_seconds() / 3600,
-                )
-                return strategy.trending_topics_cache.get('topics', [])
-
-        # Fetch fresh topics using Tavily
         try:
-            user_service = UserService(self.db)
-            tavily_key = await user_service.get_decrypted_api_key(
-                strategy.user_id, APIKeyType.TAVILY
-            )
+            # Get cache data
+            cache_data = strategy.trending_topics_cache or {}
+            used_tweet_ids = set(cache_data.get('used_tweet_ids', []))
+            cached_tweets = cache_data.get('cached_tweets', [])
 
-            if not tavily_key:
-                logger.warning("No Tavily API key for trending topics")
+            # Check if we have valid cached tweets (under 2 hours old)
+            if cached_tweets and strategy.trending_topics_updated_at:
+                cache_age = datetime.now(timezone.utc) - strategy.trending_topics_updated_at
+                if cache_age < timedelta(hours=2):
+                    # Use cached tweets - pick an unused one
+                    unused_tweets = [t for t in cached_tweets if t.get('id') not in used_tweet_ids]
+                    if unused_tweets:
+                        selected = random.choice(unused_tweets)
+                        used_tweet_ids.add(selected['id'])
+                        strategy.trending_topics_cache = {
+                            'used_tweet_ids': list(used_tweet_ids)[-100],
+                            'cached_tweets': cached_tweets,
+                            'last_tweet': selected,
+                        }
+                        await self.db.commit()
+                        logger.info(
+                            "Using cached viral tweet",
+                            strategy_id=str(strategy.id),
+                            tweet_id=selected['id'],
+                            cache_age_min=int(cache_age.total_seconds() / 60),
+                            unused_tweets_left=len(unused_tweets) - 1,
+                            total_cached=len(cached_tweets),
+                        )
+                        return [selected]
+
+            # Get Twitter access token for fresh fetch
+            twitter_service = TwitterService(self.db)
+            access_token = await twitter_service.get_valid_access_token(strategy.user_id)
+
+            if not access_token:
+                logger.warning("No Twitter access token for viral tweets")
                 return []
 
-            web_search = WebSearchService(tavily_key)
+            # Get cache data (includes used_tweet_ids)
+            used_tweet_ids = set(cache_data.get('used_tweet_ids', []))
+
+            # Search queries for cannabis content - rotate through them
+            search_queries = [
+                "weed",
+                "cannabis",
+                "stoner",
+                "420",
+                "high",
+                "smoke weed",
+                "dispensary",
+                "thc",
+            ]
+
+            # Pick a random query to get variety
+            query = random.choice(search_queries)
+
             try:
-                # Search for recent cannabis news
-                results = await web_search.search_news(
-                    query="cannabis marijuana weed legalization policy news",
-                    max_results=10,
-                    days=3,  # Last 3 days
+                # Search for popular tweets
+                tweets = await twitter_service.search_recent_tweets(
+                    access_token=access_token,
+                    query=query,
+                    max_results=50,
+                    sort_order="relevancy",
                 )
 
-                # Format results
-                topics = []
-                for r in results:
-                    topics.append({
-                        'title': r.title[:100],
-                        'summary': r.content[:200] if r.content else '',
-                        'url': r.url,
-                    })
+                if not tweets:
+                    logger.warning("No tweets found for viral remix", query=query)
+                    return []
 
-                # Update cache
-                strategy.trending_topics_cache = {'topics': topics}
+                # Filter for engagement and exclude already used tweets
+                good_tweets = []
+                for tweet in tweets:
+                    tweet_id = tweet.get('id')
+                    metrics = tweet.get('public_metrics', {})
+                    likes = metrics.get('like_count', 0)
+                    retweets = metrics.get('retweet_count', 0)
+
+                    # Skip if already used
+                    if tweet_id in used_tweet_ids:
+                        continue
+
+                    # Only include tweets with some engagement
+                    if likes >= 5 or retweets >= 2:
+                        good_tweets.append({
+                            'id': tweet_id,
+                            'text': tweet.get('text', ''),
+                            'likes': likes,
+                            'retweets': retweets,
+                            'author': tweet.get('author', {}).get('username', 'unknown'),
+                        })
+
+                if not good_tweets:
+                    # Clear used tweets if we've exhausted them
+                    logger.info("Clearing used tweets cache - all tweets exhausted")
+                    used_tweet_ids = set()
+                    # Re-filter without exclusion
+                    for tweet in tweets:
+                        metrics = tweet.get('public_metrics', {})
+                        likes = metrics.get('like_count', 0)
+                        retweets = metrics.get('retweet_count', 0)
+                        if likes >= 5 or retweets >= 2:
+                            good_tweets.append({
+                                'id': tweet.get('id'),
+                                'text': tweet.get('text', ''),
+                                'likes': likes,
+                                'retweets': retweets,
+                                'author': tweet.get('author', {}).get('username', 'unknown'),
+                            })
+
+                if not good_tweets:
+                    logger.warning("No engaging tweets found", query=query)
+                    return []
+
+                # Sort by engagement and pick a random one from top tweets
+                good_tweets.sort(key=lambda x: x['likes'] + x['retweets'] * 2, reverse=True)
+                selected_tweet = random.choice(good_tweets[:10])
+
+                # Mark as used
+                used_tweet_ids.add(selected_tweet['id'])
+
+                # Update cache - store ALL good tweets for 2-hour caching
+                strategy.trending_topics_cache = {
+                    'used_tweet_ids': list(used_tweet_ids)[-100],  # Keep last 100
+                    'cached_tweets': good_tweets,  # Cache all fetched tweets for reuse
+                    'last_tweet': selected_tweet,
+                }
                 strategy.trending_topics_updated_at = datetime.now(timezone.utc)
                 await self.db.commit()
 
                 logger.info(
-                    "Fetched fresh trending topics",
+                    "Found viral tweet to remix (fresh fetch)",
                     strategy_id=str(strategy.id),
-                    topics_count=len(topics),
+                    tweet_id=selected_tweet['id'],
+                    likes=selected_tweet['likes'],
+                    author=selected_tweet['author'],
+                    tweets_cached=len(good_tweets),
+                    query_used=query,
                 )
 
-                return topics
+                return [selected_tweet]
 
             finally:
-                await web_search.close()
+                await twitter_service.close()
 
         except Exception as e:
             logger.error(
-                "Error fetching trending topics",
+                "Error fetching viral tweets",
                 strategy_id=str(strategy.id),
                 error=str(e),
             )
-            # Return cached if available, else empty
-            if strategy.trending_topics_cache:
-                return strategy.trending_topics_cache.get('topics', [])
             return []
 
     async def generate_post_content(
@@ -1947,29 +2033,38 @@ Output ONLY the tweet text for "{fetched_strain_name}", nothing else. No quotes.
                     effects=effects_str[:50],
                 )
             elif trending_topics_data:
-                # Use trending topics for post generation
-                topics_text = "\n".join([f"- {t['title']}: {t['summary']}" for t in trending_topics_data[:5]])
+                # Remix a viral tweet found on Twitter
+                source_tweet = trending_topics_data[0]
+                source_text = source_tweet.get('text', '')
+                source_author = source_tweet.get('author', 'unknown')
+                source_likes = source_tweet.get('likes', 0)
 
-                user_prompt = f"""Create an original tweet reacting to one of these trending cannabis topics:
+                user_prompt = f"""Remix this viral cannabis tweet into your own unique post. Take the core idea/vibe and make it YOUR OWN with fresh wording.
 
-===== TRENDING CANNABIS NEWS =====
-{topics_text}
-==================================
+===== VIRAL TWEET TO REMIX =====
+Original: "{source_text}"
+(by @{source_author} - {source_likes} likes)
+================================
 
-RULES:
-1. Pick ONE topic and give your hot take or reaction
-2. Be authentic and opinionated - this is YOUR voice
-3. Keep it under {strategy.tweet_char_limit} characters
-4. Don't just report the news - react to it with personality
-5. No URLs or links
-6. 1-2 hashtags max if relevant
+RULES FOR REMIXING:
+1. Capture the VIBE and IDEA, but use completely different words
+2. Add your own personality and voice - be WeedVader
+3. DO NOT copy phrases - rewrite it fresh
+4. Keep it under {strategy.tweet_char_limit} characters
+5. Make it sound like YOUR original thought
+6. Add Star Wars references if they fit naturally
+7. No URLs or links, no @mentions
+8. 1-2 hashtags max if it fits the vibe
 
-Output ONLY the tweet text, nothing else."""
+IMPORTANT: The output should feel like an original post, NOT a copy or quote. Just capture the energy.
+
+Output ONLY your remixed tweet, nothing else."""
 
                 logger.info(
-                    "Generating trending topics post",
+                    "Generating remixed tweet",
                     strategy_id=str(strategy.id),
-                    topics_count=len(trending_topics_data),
+                    source_tweet_id=source_tweet.get('id'),
+                    source_likes=source_likes,
                 )
             else:
                 user_prompt = f"""Create an original tweet for a {niche} account.
